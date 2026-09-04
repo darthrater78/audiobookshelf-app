@@ -1,5 +1,5 @@
 <template>
-  <modals-modal v-model="show" @input="modalInput" :width="200" height="100%">
+  <modals-modal v-model="show" @input="modalInput" :width="260" height="100%">
     <template #outer>
       <div class="absolute top-8 left-4 z-40">
         <p class="text-white text-2xl truncate">{{ $strings.LabelPlaybackSpeed }}</p>
@@ -10,7 +10,7 @@
       <div class="w-full overflow-x-hidden overflow-y-auto bg-primary rounded-lg border border-border" style="max-height: 75%" @click.stop>
         <ul class="w-full" role="listbox" aria-labelledby="listbox-label">
           <template v-for="rate in rates">
-            <li :key="rate" class="text-fg select-none relative py-4" :class="rate === selected ? 'bg-bg-hover/50' : ''" role="option" @click="clickedOption(rate)">
+            <li :key="rate" class="text-fg select-none relative py-3" :class="rate === selected ? 'bg-bg-hover/50' : ''" role="option" @click="clickedOption(rate)">
               <div class="flex items-center justify-center">
                 <span class="font-normal block truncate text-lg">{{ rate }}x</span>
               </div>
@@ -28,6 +28,16 @@
             <span class="material-symbols">add</span>
           </button>
         </div>
+        <div v-if="setDefaultLabel || hasItemOverride" class="flex flex-col items-center gap-1.5 py-2 px-3 border-t border-fg/10">
+          <p v-if="hasItemOverride" class="text-xs text-fg-muted/70">Item override active</p>
+          <button v-if="hasItemOverride" @click="clearOverride" class="w-full text-xs text-fg-muted px-2 py-1.5 rounded border border-border active:bg-bg-hover/50">
+            Reset to default
+          </button>
+          <p v-if="currentDefaultLabel" class="text-xs text-fg-muted/50 capitalize">{{ currentDefaultLabel }}</p>
+          <button v-if="setDefaultLabel" @click="setAsDefault" class="w-full text-xs text-fg-muted px-2 py-1.5 rounded border border-border active:bg-bg-hover/50">
+            {{ setDefaultLabel }}
+          </button>
+        </div>
       </div>
     </div>
   </modals-modal>
@@ -37,11 +47,24 @@
 export default {
   props: {
     value: Boolean,
-    playbackRate: Number
+    playbackRate: Number,
+    mediaType: {
+      type: String,
+      default: null
+    },
+    hasItemOverride: {
+      type: Boolean,
+      default: false
+    },
+    mediaTypeDefault: {
+      type: Number,
+      default: null
+    }
   },
   data() {
     return {
       currentPlaybackRate: 0,
+      skipChangeOnClose: false,
       MIN_SPEED: 0.5,
       MAX_SPEED: 10
     }
@@ -78,6 +101,19 @@ export default {
     },
     canDecrement() {
       return this.playbackRate - 0.1 >= this.MIN_SPEED
+    },
+    mediaTypeLabel() {
+      if (!this.mediaType) return null
+      return this.mediaType === 'podcast' ? 'podcasts' : 'audiobooks'
+    },
+    currentDefaultLabel() {
+      if (!this.mediaTypeLabel || this.mediaTypeDefault == null) return null
+      return `${this.mediaTypeLabel} default: ${this.mediaTypeDefault}x`
+    },
+    setDefaultLabel() {
+      if (!this.mediaTypeLabel) return null
+      if (this.mediaTypeDefault === this.playbackRate) return null
+      return `Set ${this.playbackRate}x as default for ${this.mediaTypeLabel}`
     }
   },
   methods: {
@@ -93,6 +129,10 @@ export default {
     },
     modalInput(val) {
       if (!val) {
+        if (this.skipChangeOnClose) {
+          this.skipChangeOnClose = false
+          return
+        }
         if (this.currentPlaybackRate !== this.selected) {
           this.$emit('change', this.selected)
         }
@@ -100,8 +140,18 @@ export default {
     },
     clickedOption(rate) {
       this.selected = Number(rate)
-      this.show = false
       this.$emit('change', Number(rate))
+    },
+    setAsDefault() {
+      if (!this.mediaType) return
+      this.$emit('setDefault', this.playbackRate)
+      this.skipChangeOnClose = true
+      this.show = false
+    },
+    clearOverride() {
+      this.skipChangeOnClose = true
+      this.$emit('clearItemOverride')
+      this.show = false
     }
   },
   mounted() {}

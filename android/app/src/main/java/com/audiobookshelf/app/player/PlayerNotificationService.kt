@@ -658,7 +658,7 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
               if (it == null) {
                 Log.e(tag, "Failed to play library item")
               } else {
-                val playbackRate = mediaManager.getSavedPlaybackRate()
+                val playbackRate = mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
                 Handler(Looper.getMainLooper()).post { preparePlayer(it, true, playbackRate) }
               }
             }
@@ -2192,7 +2192,7 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
     }
 
     override fun getCustomAction(player: Player): PlaybackStateCompat.CustomAction? {
-      val playbackRate = mediaManager.getSavedPlaybackRate()
+      val playbackRate = mediaManager.getSavedPlaybackRate(currentPlaybackSession?.libraryItemId, currentPlaybackSession?.mediaType)
 
       // Rounding values in the event a non preset value (.5, 1, 1.2, 1.5, 2, 3) is selected in the
       // phone app

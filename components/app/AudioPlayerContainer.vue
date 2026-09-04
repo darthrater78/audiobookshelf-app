@@ -2,7 +2,7 @@
   <div>
     <app-audio-player ref="audioPlayer" :bookmarks="bookmarks" :sleep-timer-running="isSleepTimerRunning" :sleep-time-remaining="sleepTimeRemaining" :serverLibraryItemId="serverLibraryItemId" @selectPlaybackSpeed="showPlaybackSpeedModal = true" @updateTime="(t) => (currentTime = t)" @showSleepTimer="showSleepTimer" @showBookmarks="showBookmarks" />
 
-    <modals-playback-speed-modal v-model="showPlaybackSpeedModal" :playback-rate.sync="playbackSpeed" @update:playbackRate="updatePlaybackSpeed" @change="changePlaybackSpeed" />
+    <modals-playback-speed-modal v-model="showPlaybackSpeedModal" :playback-rate.sync="playbackSpeed" :media-type="currentMediaType" :has-item-override="hasItemOverride" :media-type-default="currentMediaTypeDefault" @update:playbackRate="updatePlaybackSpeed" @change="changePlaybackSpeed" @setDefault="setDefaultPlaybackSpeed" @clearItemOverride="clearItemOverride" />
     <modals-sleep-timer-modal v-model="showSleepTimerModal" :current-time="sleepTimeRemaining" :sleep-timer-running="isSleepTimerRunning" :current-end-of-chapter-time="currentEndOfChapterTime" :is-auto="isAutoSleepTimer" @change="selectSleepTimeout" @cancel="cancelSleepTimer" @increase="increaseSleepTimer" @decrease="decreaseSleepTimer" />
     <modals-bookmarks-modal v-model="showBookmarksModal" :bookmarks="bookmarks" :current-time="currentTime" :library-item-id="serverLibraryItemId" :playback-rate="playbackSpeed" @select="selectBookmark" />
   </div>
@@ -37,7 +37,8 @@ export default {
       sleepInterval: null,
       currentEndOfChapterTime: 0,
       serverLibraryItemId: null,
-      serverEpisodeId: null
+      serverEpisodeId: null,
+      itemPlaybackRates: {}
     }
   },
   mixins: [CellularPermissionHelpers],
@@ -51,6 +52,29 @@ export default {
     },
     currentPlaybackSession() {
       return this.$store.state.currentPlaybackSession
+    },
+    currentMediaType() {
+      return this.currentPlaybackSession?.mediaType || null
+    },
+    hasItemOverride() {
+      const session = this.currentPlaybackSession
+      if (!session?.libraryItemId) return false
+      const itemRate = this.itemPlaybackRates[session.libraryItemId]
+      if (itemRate == null) return false
+      const settings = this.$store.state.user.settings
+      let defaultRate = settings.playbackRate
+      if (session.mediaType === 'podcast' && settings.podcastPlaybackRate != null) {
+        defaultRate = settings.podcastPlaybackRate
+      } else if (session.mediaType === 'book' && settings.bookPlaybackRate != null) {
+        defaultRate = settings.bookPlaybackRate
+      }
+      return itemRate !== defaultRate
+    },
+    currentMediaTypeDefault() {
+      const settings = this.$store.state.user.settings
+      if (this.currentMediaType === 'podcast') return settings.podcastPlaybackRate
+      if (this.currentMediaType === 'book') return settings.bookPlaybackRate
+      return null
     }
   },
   methods: {
@@ -134,6 +158,19 @@ export default {
         }
       }
     },
+    resolvePlaybackRate(libraryItemId, mediaType) {
+      if (libraryItemId && this.itemPlaybackRates[libraryItemId]) {
+        return this.itemPlaybackRates[libraryItemId]
+      }
+      const settings = this.$store.state.user.settings
+      if (mediaType === 'podcast' && settings.podcastPlaybackRate != null) {
+        return settings.podcastPlaybackRate
+      }
+      if (mediaType === 'book' && settings.bookPlaybackRate != null) {
+        return settings.bookPlaybackRate
+      }
+      return settings.playbackRate
+    },
     updatePlaybackSpeed(speed) {
       if (this.$refs.audioPlayer) {
         console.log(`[AudioPlayerContainer] Update Playback Speed: ${speed}`)
@@ -141,18 +178,47 @@ export default {
       }
     },
     changePlaybackSpeed(speed) {
-      console.log(`[AudioPlayerContainer] Change Playback Speed: ${speed}`)
-      this.$store.dispatch('user/updateUserSettings', { playbackRate: speed })
+      const session = this.currentPlaybackSession
+      if (session?.libraryItemId) {
+        this.itemPlaybackRates[session.libraryItemId] = speed
+        this.$localStore.setItemPlaybackRate(session.libraryItemId, speed)
+      } else {
+        this.$store.dispatch('user/updateUserSettings', { playbackRate: speed })
+      }
+    },
+    setDefaultPlaybackSpeed(speed) {
+      const mediaType = this.currentMediaType
+      if (!mediaType) return
+      const key = mediaType === 'podcast' ? 'podcastPlaybackRate' : 'bookPlaybackRate'
+      this.$store.dispatch('user/updateUserSettings', { [key]: speed })
+      const label = mediaType === 'podcast' ? 'podcasts' : 'audiobooks'
+      this.$toast.success(`Default speed for ${label} set to ${speed}x`)
+    },
+    clearItemOverride() {
+      const session = this.currentPlaybackSession
+      if (!session?.libraryItemId) return
+      delete this.itemPlaybackRates[session.libraryItemId]
+      this.$localStore.removeItemPlaybackRate(session.libraryItemId)
+      const resolvedRate = this.resolvePlaybackRate(session.libraryItemId, session.mediaType)
+      this.playbackSpeed = resolvedRate
+      this.updatePlaybackSpeed(resolvedRate)
+      this.$toast.success(`Cleared speed override, using ${resolvedRate}x`)
     },
     settingsUpdated(settings) {
-      console.log(`[AudioPlayerContainer] Settings Update | PlaybackRate: ${settings.playbackRate}`)
-      this.playbackSpeed = settings.playbackRate
-      if (this.$refs.audioPlayer && this.$refs.audioPlayer.currentPlaybackRate !== settings.playbackRate) {
-        console.log(`[AudioPlayerContainer] PlaybackRate Updated: ${this.playbackSpeed}`)
-        this.$refs.audioPlayer.setPlaybackSpeed(this.playbackSpeed)
+      const session = this.currentPlaybackSession
+      const resolvedRate = session
+        ? this.resolvePlaybackRate(session.libraryItemId, session.mediaType)
+        : settings.playbackRate
+      console.log(`[AudioPlayerContainer] Settings Update | Resolved PlaybackRate: ${resolvedRate}`)
+
+      if (this.playbackSpeed !== resolvedRate) {
+        this.playbackSpeed = resolvedRate
+        if (this.$refs.audioPlayer) {
+          console.log(`[AudioPlayerContainer] PlaybackRate Updated: ${this.playbackSpeed}`)
+          this.$refs.audioPlayer.setPlaybackSpeed(this.playbackSpeed)
+        }
       }
 
-      // Settings have been loaded (at least once, so it's safe to kickoff onReady)
       if (!this.settingsLoaded) {
         this.settingsLoaded = true
         this.notifyOnReady()
@@ -240,12 +306,13 @@ export default {
       this.serverLibraryItemId = null
       this.serverEpisodeId = null
 
-      let playbackRate = 1
+      let playbackRate = this.resolvePlaybackRate(libraryItemId, payload.mediaType || null)
+      this.playbackSpeed = playbackRate
       if (this.$refs.audioPlayer) {
-        playbackRate = this.$refs.audioPlayer.currentPlaybackRate || 1
+        this.$refs.audioPlayer.currentPlaybackRate = playbackRate
       }
 
-      console.log('Called playLibraryItem', libraryItemId)
+      console.log('Called playLibraryItem', libraryItemId, 'playbackRate', playbackRate)
       const preparePayload = { libraryItemId, episodeId, playWhenReady: startWhenReady, playbackRate }
       if (startTime !== undefined && startTime !== null) preparePayload.startTime = startTime
       AbsAudioPlayer.prepareLibraryItem(preparePayload)
@@ -264,6 +331,15 @@ export default {
               this.serverEpisodeId = episodeId
             } else {
               this.serverEpisodeId = serverEpisodeId
+            }
+
+            const session = this.$store.state.currentPlaybackSession
+            if (session) {
+              const resolvedRate = this.resolvePlaybackRate(session.libraryItemId, session.mediaType)
+              if (resolvedRate !== playbackRate) {
+                this.playbackSpeed = resolvedRate
+                this.$refs.audioPlayer?.setPlaybackSpeed(resolvedRate)
+              }
             }
           }
         })
@@ -441,8 +517,9 @@ export default {
     this.onSleepTimerSetListener = await AbsAudioPlayer.addListener('onSleepTimerSet', this.onSleepTimerSet)
     this.onMediaPlayerChangedListener = await AbsAudioPlayer.addListener('onMediaPlayerChanged', this.onMediaPlayerChanged)
 
+    this.itemPlaybackRates = await this.$localStore.getItemPlaybackRates()
     this.playbackSpeed = this.$store.getters['user/getUserSetting']('playbackRate')
-    console.log(`[AudioPlayerContainer] Init Playback Speed: ${this.playbackSpeed}`)
+    console.log(`[AudioPlayerContainer] Init Playback Speed: ${this.playbackSpeed} | Item overrides: ${Object.keys(this.itemPlaybackRates).length}`)
 
     this.$eventBus.$on('abs-ui-ready', this.onReady)
     this.$eventBus.$on('play-item', this.playLibraryItem)

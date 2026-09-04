@@ -1,7 +1,11 @@
 {
   "name": "audiobookshelf-app",
-  "version": "0.14.0-beta",
+  "version": "1.0.0",
   "author": "advplyr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/darthrater78/audiobookshelf-app"
+  },
   "scripts": {
     "dev": "nuxt --hostname 0.0.0.0 --port 1337",
     "build": "nuxt build",
@@ -24,7 +28,6 @@
     "@capacitor/core": "^7.0.0",
     "@capacitor/dialog": "^7.0.0",
     "@capacitor/haptics": "^7.0.0",
-    "@capacitor/ios": "^7.0.0",
     "@capacitor/network": "^7.0.0",
     "@capacitor/preferences": "^7.0.0",
     "@capacitor/status-bar": "^7.0.0",

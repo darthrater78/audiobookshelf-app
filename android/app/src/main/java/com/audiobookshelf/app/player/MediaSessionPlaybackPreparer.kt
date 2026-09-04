@@ -34,7 +34,7 @@ class MediaSessionPlaybackPreparer(var playerNotificationService:PlayerNotificat
         if (it == null) {
           Log.e(tag, "Failed to play library item")
         } else {
-          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate()
+          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
           Handler(Looper.getMainLooper()).post {
             playerNotificationService.preparePlayer(it, playWhenReady, playbackRate)
           }
@@ -62,7 +62,7 @@ class MediaSessionPlaybackPreparer(var playerNotificationService:PlayerNotificat
         if (it == null) {
          Log.e(tag, "Failed to play library item")
         } else {
-          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate()
+          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
           Handler(Looper.getMainLooper()).post {
             playerNotificationService.preparePlayer(it, playWhenReady, playbackRate)
           }
@@ -78,7 +78,7 @@ class MediaSessionPlaybackPreparer(var playerNotificationService:PlayerNotificat
         if (it == null) {
          Log.e(tag, "Failed to play library item")
         } else {
-          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate()
+          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
           Handler(Looper.getMainLooper()).post {
             playerNotificationService.preparePlayer(it, playWhenReady, playbackRate)
           }

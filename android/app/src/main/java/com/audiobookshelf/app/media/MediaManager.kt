@@ -92,7 +92,17 @@ class MediaManager(private var apiHandler: ApiHandler, var ctx: Context) {
     }
   }
 
-  fun getSavedPlaybackRate():Float {
+  private fun getItemPlaybackRates(): JSONObject {
+    val sharedPrefs = ctx.getSharedPreferences("CapacitorStorage", Activity.MODE_PRIVATE)
+    val ratesJson = sharedPrefs?.getString("itemPlaybackRates", null)
+    return if (ratesJson != null) {
+      try { JSONObject(ratesJson) } catch (e: JSONException) { JSONObject() }
+    } else {
+      JSONObject()
+    }
+  }
+
+  private fun getGlobalPlaybackRate(): Float {
     if (userSettingsPlaybackRate != null) {
       return userSettingsPlaybackRate ?: 1f
     }
@@ -115,7 +125,51 @@ class MediaManager(private var apiHandler: ApiHandler, var ctx: Context) {
     return 1f
   }
 
-  fun setSavedPlaybackRate(newRate: Float) {
+  fun getSavedPlaybackRate(libraryItemId: String? = null, mediaType: String? = null): Float {
+    if (libraryItemId != null) {
+      try {
+        val rates = getItemPlaybackRates()
+        if (rates.has(libraryItemId)) {
+          return rates.getDouble(libraryItemId).toFloat()
+        }
+      } catch (e: JSONException) {
+        Log.e(tag, "Failed to read item playback rate for $libraryItemId: ${e.localizedMessage}")
+      }
+    }
+
+    if (mediaType != null) {
+      val sharedPrefs = ctx.getSharedPreferences("CapacitorStorage", Activity.MODE_PRIVATE)
+      val userSettingsPref = sharedPrefs?.getString("userSettings", null)
+      if (userSettingsPref != null) {
+        try {
+          val userSettings = JSObject(userSettingsPref)
+          val key = if (mediaType == "podcast") "podcastPlaybackRate" else "bookPlaybackRate"
+          if (userSettings.has(key) && !userSettings.isNull(key)) {
+            return userSettings.getDouble(key).toFloat()
+          }
+        } catch (e: JSONException) {
+          Log.e(tag, "Failed to read media-type playback rate: ${e.localizedMessage}")
+        }
+      }
+    }
+
+    return getGlobalPlaybackRate()
+  }
+
+  fun setSavedPlaybackRate(newRate: Float, libraryItemId: String? = null) {
+    if (libraryItemId != null) {
+      val sharedPrefs = ctx.getSharedPreferences("CapacitorStorage", Activity.MODE_PRIVATE)
+      try {
+        val rates = getItemPlaybackRates()
+        rates.put(libraryItemId, newRate.toString().toDouble())
+        sharedPrefs.edit().putString("itemPlaybackRates", rates.toString()).apply()
+        Log.d(tag, "Saved item playback rate for $libraryItemId: $newRate")
+      } catch (e: JSONException) {
+        Log.e(tag, "Failed to save item playback rate: ${e.localizedMessage}")
+      }
+      return
+    }
+
     val sharedPrefs = ctx.getSharedPreferences("CapacitorStorage", Activity.MODE_PRIVATE)
     val sharedPrefEditor = sharedPrefs.edit()
     if (sharedPrefs != null) {
@@ -123,7 +177,6 @@ class MediaManager(private var apiHandler: ApiHandler, var ctx: Context) {
       if (userSettingsPref != null) {
         try {
           val userSettings = JSObject(userSettingsPref)
-          // toString().toDouble() to prevent float conversion issues (ex 1.2f becomes 1.2000000476837158d)
           userSettings.put("playbackRate", newRate.toString().toDouble())
           sharedPrefEditor.putString("userSettings", userSettings.toString())
           sharedPrefEditor.apply()
@@ -133,8 +186,6 @@ class MediaManager(private var apiHandler: ApiHandler, var ctx: Context) {
           Log.e(tag, "Failed to save userSettings JSON ${je.localizedMessage}")
         }
       } else {
-        // Not sure if this is the best place for this, but if a user has not changed any user settings in the app
-        // the object will not exist yet, could be moved to a centralized place or created on first app load
         val userSettings = JSONObject()
         userSettings.put("playbackRate", newRate.toString().toDouble())
         sharedPrefEditor.putString("userSettings", userSettings.toString())

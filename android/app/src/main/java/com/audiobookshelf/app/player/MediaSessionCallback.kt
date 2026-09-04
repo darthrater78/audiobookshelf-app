@@ -24,7 +24,7 @@ class MediaSessionCallback(var playerNotificationService:PlayerNotificationServi
         if (it == null) {
           Log.e(tag, "Failed to play library item")
         } else {
-          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate()
+          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
           Handler(Looper.getMainLooper()).post {
             playerNotificationService.preparePlayer(it,true, playbackRate)
           }
@@ -50,7 +50,7 @@ class MediaSessionCallback(var playerNotificationService:PlayerNotificationServi
         if (it == null) {
            Log.e(tag, "Failed to play library item")
         } else {
-          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate()
+          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
           Handler(Looper.getMainLooper()).post {
             playerNotificationService.preparePlayer(it, true, playbackRate)
           }
@@ -93,18 +93,19 @@ class MediaSessionCallback(var playerNotificationService:PlayerNotificationServi
     // cycle to next speed, only contains preset android app options, as each increment needs it's own icon
     // Rounding values in the event a non preset value (.5, 1, 1.2, 1.5, 2, 3) is selected in the phone app
     val mediaManager = playerNotificationService.mediaManager
-    val newSpeed = when (mediaManager.getSavedPlaybackRate()) {
+    val session = playerNotificationService.currentPlaybackSession
+    val currentRate = mediaManager.getSavedPlaybackRate(session?.libraryItemId, session?.mediaType)
+    val newSpeed = when (currentRate) {
       in 0.5f..0.7f -> 1.0f
       in 0.8f..1.0f -> 1.2f
       in 1.1f..1.2f -> 1.5f
       in 1.3f..1.5f -> 2.0f
       in 1.6f..2.0f -> 3.0f
       in 2.1f..3.0f -> 0.5f
-      // anything set above 3 (can happen in the android app) will be reset to 1
       else -> 1.0f
     }
-    mediaManager.setSavedPlaybackRate(newSpeed)
     playerNotificationService.setPlaybackSpeed(newSpeed)
+    playerNotificationService.mediaManager.setSavedPlaybackRate(newSpeed, playerNotificationService.currentPlaybackSession?.libraryItemId)
     playerNotificationService.clientEventEmitter?.onPlaybackSpeedChanged(newSpeed)
   }
 
@@ -133,7 +134,7 @@ class MediaSessionCallback(var playerNotificationService:PlayerNotificationServi
         if (it == null) {
          Log.e(tag, "Failed to play library item")
         } else {
-          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate()
+          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
           Handler(Looper.getMainLooper()).post {
             playerNotificationService.preparePlayer(it, true, playbackRate)
           }
