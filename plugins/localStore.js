@@ -144,10 +144,40 @@ class LocalStorage {
     }
   }
 
+  async getItemPlaybackRates() {
+    try {
+      const obj = await Preferences.get({ key: 'itemPlaybackRates' }) || {}
+      return obj.value ? JSON.parse(obj.value) : {}
+    } catch (error) {
+      console.error('[LocalStorage] Failed to get item playback rates', error)
+      return {}
+    }
+  }
+
+  async setItemPlaybackRate(libraryItemId, rate) {
+    try {
+      const rates = await this.getItemPlaybackRates()
+      rates[libraryItemId] = rate
+      await Preferences.set({ key: 'itemPlaybackRates', value: JSON.stringify(rates) })
+    } catch (error) {
+      console.error('[LocalStorage] Failed to set item playback rate', error)
+    }
+  }
+
+  async removeItemPlaybackRate(libraryItemId) {
+    try {
+      const rates = await this.getItemPlaybackRates()
+      delete rates[libraryItemId]
+      await Preferences.set({ key: 'itemPlaybackRates', value: JSON.stringify(rates) })
+    } catch (error) {
+      console.error('[LocalStorage] Failed to remove item playback rate', error)
+    }
+  }
+
   /**
    * Get preference value by key
-   * 
-   * @param {string} key 
+   *
+   * @param {string} key
    * @returns {Promise<string>}
    */
   async getPreferenceByKey(key) {

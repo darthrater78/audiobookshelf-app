@@ -11,6 +11,8 @@ export const state = () => ({
     mobileOrderDesc: true,
     mobileFilterBy: 'all',
     playbackRate: 1,
+    podcastPlaybackRate: null,
+    bookPlaybackRate: null,
     collapseSeries: false,
     collapseBookSeries: false,
     podcastEpisodesOrderBy: 'publishedAt',

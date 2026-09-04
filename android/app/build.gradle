@@ -19,7 +19,7 @@ kotlin {
     "--add-opens=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED"
   ]
 
-  jvmToolchain(17)
+  jvmToolchain(21)
 }
 
 android {
@@ -37,7 +37,7 @@ android {
     minSdkVersion rootProject.ext.minSdkVersion
     targetSdkVersion rootProject.ext.targetSdkVersion
     versionCode 118
-    versionName "0.14.0-beta"
+    versionName "1.0.0"
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     manifestPlaceholders = [
       "appAuthRedirectScheme": "com.audiobookshelf.app"
@@ -124,10 +124,10 @@ dependencies {
   implementation "com.anggrayudi:storage:1.5.6"
 
   // OK HTTP
-  implementation 'com.squareup.okhttp3:okhttp:4.9.2'
+  implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 
   // Jackson for JSON
-  implementation 'com.fasterxml.jackson.module:jackson-module-kotlin:2.12.2'
+  implementation 'com.fasterxml.jackson.module:jackson-module-kotlin:2.17.2'
 }
 
 apply from: 'capacitor.build.gradle'
