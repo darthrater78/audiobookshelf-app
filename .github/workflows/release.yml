@@ -29,13 +29,11 @@ jobs:
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/audiobookshelf-release.keystore
 
       - name: write keystore properties
+        env:
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          cat > android/keystore.properties << EOF
-          storeFile=../audiobookshelf-release.keystore
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyAlias=audiobookshelf
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          EOF
+          printf 'storeFile=../audiobookshelf-release.keystore\nstorePassword=%s\nkeyAlias=audiobookshelf\nkeyPassword=%s\n' "$STORE_PASSWORD" "$KEY_PASSWORD" > android/keystore.properties
 
       - name: install dependencies
         run: npm ci
