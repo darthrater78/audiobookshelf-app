@@ -909,6 +909,8 @@ export default {
       if (!data.value || isNaN(data.value)) return
       this.currentPlaybackRate = Number(data.value)
       this.updateTimestamp()
+      // Native owns speed resolution - let the container mirror what actually took effect
+      this.$emit('playbackSpeedChanged', this.currentPlaybackRate)
     },
     async init() {
       await this.loadPlayerSettings()
@@ -921,6 +923,18 @@ export default {
       AbsAudioPlayer.addListener('onProgressSyncFailing', this.showProgressSyncIsFailing)
       AbsAudioPlayer.addListener('onProgressSyncSuccess', this.showProgressSyncSuccess)
       AbsAudioPlayer.addListener('onPlaybackSpeedChanged', this.onPlaybackSpeedChanged)
+
+      // A session restored by the native service may have announced its speed before the
+      // listener above existed, so ask once for the rate actually in effect
+      try {
+        const { value } = await AbsAudioPlayer.getPlaybackSpeed()
+        if (value && !isNaN(value)) {
+          console.log(`[AudioPlayer] Synced playback rate from native: ${value}`)
+          this.onPlaybackSpeedChanged({ value })
+        }
+      } catch (error) {
+        console.error('[AudioPlayer] Failed to sync playback rate from native', error)
+      }
     },
     async screenOrientationChange() {
       if (this.isRefreshingUI) return

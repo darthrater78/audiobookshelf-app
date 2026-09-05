@@ -7,6 +7,7 @@ import com.audiobookshelf.app.MainActivity
 import com.audiobookshelf.app.data.*
 import com.audiobookshelf.app.device.DeviceManager
 import com.audiobookshelf.app.media.MediaEventManager
+import com.audiobookshelf.app.media.MediaManager
 import com.audiobookshelf.app.player.CastManager
 import com.audiobookshelf.app.player.PlayerListener
 import com.audiobookshelf.app.player.PlayerNotificationService
@@ -208,7 +209,10 @@ class AbsAudioPlayer : Plugin() {
     val libraryItemId = call.getString("libraryItemId", "").toString()
     val episodeId = call.getString("episodeId", "").toString()
     val playWhenReady = call.getBoolean("playWhenReady") == true
-    val playbackRate = call.getFloat("playbackRate",1f) ?: 1f
+    // Nullable on purpose: when the web layer omits a rate, preparePlayer resolves the
+    // saved per-item / per-media-type / global speed. Defaulting to 1f here is what made
+    // every play request silently reset the speed.
+    val playbackRate = call.getFloat("playbackRate")
     val startTimeOverride = call.getDouble("startTime")
 
     AbsLogger.info("AbsAudioPlayer", "prepareLibraryItem: lid=$libraryItemId, startTimeOverride=$startTimeOverride, playbackRate=$playbackRate")
@@ -299,6 +303,23 @@ class AbsAudioPlayer : Plugin() {
     }
   }
 
+  /**
+   * Returns the speed currently in effect, so the UI can sync after a reload without
+   * waiting for an onPlaybackSpeedChanged event it may have been too late to hear.
+   */
+  @PluginMethod
+  fun getPlaybackSpeed(call: PluginCall) {
+    if (!::playerNotificationService.isInitialized) {
+      // Service not bound yet - the UI keeps whatever it already has
+      return call.resolve(JSObject())
+    }
+    Handler(Looper.getMainLooper()).post {
+      val ret = JSObject()
+      ret.put("value", playerNotificationService.getPlaybackSpeed())
+      call.resolve(ret)
+    }
+  }
+
   @PluginMethod
   fun pausePlayer(call: PluginCall) {
     Handler(Looper.getMainLooper()).post {
@@ -353,7 +374,13 @@ class AbsAudioPlayer : Plugin() {
 
   @PluginMethod
   fun setPlaybackSpeed(call: PluginCall) {
-    val playbackSpeed:Float = call.getFloat("value", 1.0f) ?: 1.0f
+    val requested: Float = call.getFloat("value", MediaManager.DEFAULT_PLAYBACK_RATE)
+            ?: MediaManager.DEFAULT_PLAYBACK_RATE
+    // ExoPlayer throws on a non-positive speed, which would take down the main thread.
+    // Clamp rather than trust whatever the bridge hands us.
+    val playbackSpeed: Float =
+            if (!requested.isFinite()) MediaManager.DEFAULT_PLAYBACK_RATE
+            else requested.coerceIn(MediaManager.MIN_PLAYBACK_RATE, MediaManager.MAX_PLAYBACK_RATE)
 
     Handler(Looper.getMainLooper()).post {
       playerNotificationService.setPlaybackSpeed(playbackSpeed)

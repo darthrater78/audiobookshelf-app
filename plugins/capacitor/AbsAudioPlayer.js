@@ -154,6 +154,11 @@ class AbsAudioPlayerWeb extends WebPlugin {
   }
 
   // PluginMethod
+  async getPlaybackSpeed() {
+    return { value: this.playbackRate }
+  }
+
+  // PluginMethod
   setChapterTrack({ enabled }) {
     this.useChapterTrack = enabled
   }
