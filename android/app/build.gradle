@@ -22,6 +22,12 @@ kotlin {
   jvmToolchain(21)
 }
 
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+  keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
   namespace 'com.audiobookshelf.app'
   buildFeatures {
@@ -36,8 +42,8 @@ android {
     applicationId "com.audiobookshelf.app"
     minSdkVersion rootProject.ext.minSdkVersion
     targetSdkVersion rootProject.ext.targetSdkVersion
-    versionCode 118
-    versionName "1.0.0"
+    versionCode 119
+    versionName "1.0.1"
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     manifestPlaceholders = [
       "appAuthRedirectScheme": "com.audiobookshelf.app"
@@ -48,6 +54,14 @@ android {
       ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
   }
+  signingConfigs {
+    release {
+      storeFile file(keystoreProperties['storeFile'] ?: '../audiobookshelf-release.keystore')
+      storePassword keystoreProperties['storePassword'] ?: ''
+      keyAlias keystoreProperties['keyAlias'] ?: 'audiobookshelf'
+      keyPassword keystoreProperties['keyPassword'] ?: ''
+    }
+  }
   buildTypes {
     debug {
       applicationIdSuffix ".debug"
@@ -56,6 +70,7 @@ android {
       proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
     }
     release {
+      signingConfig signingConfigs.release
       minifyEnabled false
       proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
     }

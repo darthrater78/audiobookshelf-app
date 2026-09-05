@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [1.0.1](https://github.com/darthrater78/audiobookshelf-app/releases/tag/v1.0.1) — 2026-09-05
 
 Rework of per-item playback speed. The v1.0.0 implementation resolved speed independently in the web and native layers, using different storage keys, so overrides were frequently lost and playback fell back to 1x.
 
