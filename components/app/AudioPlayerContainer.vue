@@ -1,6 +1,6 @@
 <template>
   <div>
-    <app-audio-player ref="audioPlayer" :bookmarks="bookmarks" :sleep-timer-running="isSleepTimerRunning" :sleep-time-remaining="sleepTimeRemaining" :serverLibraryItemId="serverLibraryItemId" @selectPlaybackSpeed="showPlaybackSpeedModal = true" @updateTime="(t) => (currentTime = t)" @showSleepTimer="showSleepTimer" @showBookmarks="showBookmarks" />
+    <app-audio-player ref="audioPlayer" :bookmarks="bookmarks" :sleep-timer-running="isSleepTimerRunning" :sleep-time-remaining="sleepTimeRemaining" :serverLibraryItemId="serverLibraryItemId" @selectPlaybackSpeed="showPlaybackSpeedModal = true" @updateTime="(t) => (currentTime = t)" @playbackSpeedChanged="onPlaybackSpeedChanged" @showSleepTimer="showSleepTimer" @showBookmarks="showBookmarks" />
 
     <modals-playback-speed-modal v-model="showPlaybackSpeedModal" :playback-rate.sync="playbackSpeed" :media-type="currentMediaType" :has-item-override="hasItemOverride" :media-type-default="currentMediaTypeDefault" @update:playbackRate="updatePlaybackSpeed" @change="changePlaybackSpeed" @setDefault="setDefaultPlaybackSpeed" @clearItemOverride="clearItemOverride" />
     <modals-sleep-timer-modal v-model="showSleepTimerModal" :current-time="sleepTimeRemaining" :sleep-timer-running="isSleepTimerRunning" :current-end-of-chapter-time="currentEndOfChapterTime" :is-auto="isAutoSleepTimer" @change="selectSleepTimeout" @cancel="cancelSleepTimer" @increase="increaseSleepTimer" @decrease="decreaseSleepTimer" />
@@ -38,7 +38,8 @@ export default {
       currentEndOfChapterTime: 0,
       serverLibraryItemId: null,
       serverEpisodeId: null,
-      itemPlaybackRates: {}
+      itemPlaybackRates: {},
+      itemRatesLoaded: false
     }
   },
   mixins: [CellularPermissionHelpers],
@@ -56,19 +57,13 @@ export default {
     currentMediaType() {
       return this.currentPlaybackSession?.mediaType || null
     },
+    currentSpeedKey() {
+      return this.speedKeyForSession(this.currentPlaybackSession)
+    },
     hasItemOverride() {
-      const session = this.currentPlaybackSession
-      if (!session?.libraryItemId) return false
-      const itemRate = this.itemPlaybackRates[session.libraryItemId]
-      if (itemRate == null) return false
-      const settings = this.$store.state.user.settings
-      let defaultRate = settings.playbackRate
-      if (session.mediaType === 'podcast' && settings.podcastPlaybackRate != null) {
-        defaultRate = settings.podcastPlaybackRate
-      } else if (session.mediaType === 'book' && settings.bookPlaybackRate != null) {
-        defaultRate = settings.bookPlaybackRate
-      }
-      return itemRate !== defaultRate
+      const key = this.currentSpeedKey
+      if (!key) return false
+      return this.itemPlaybackRates[key] != null
     },
     currentMediaTypeDefault() {
       const settings = this.$store.state.user.settings
@@ -158,10 +153,31 @@ export default {
         }
       }
     },
-    resolvePlaybackRate(libraryItemId, mediaType) {
-      if (libraryItemId && this.itemPlaybackRates[libraryItemId]) {
-        return this.itemPlaybackRates[libraryItemId]
-      }
+    /**
+     * Canonical key for a per-item speed override.
+     *
+     * A downloaded book is played by its "local_" id but its session reports the server
+     * id, so keying off whichever one happens to be at hand splits the same book into two
+     * entries and the override is never found again. Prefer the server id, fall back to
+     * the local id. PlaybackSession.playbackRateKey on the native side derives the same
+     * key - keep the two in sync.
+     */
+    speedKeyForSession(session) {
+      if (!session) return null
+      return session.libraryItemId || session.localLibraryItem?.id || null
+    },
+    speedKeyForPayload(payload) {
+      if (!payload) return null
+      return payload.serverLibraryItemId || payload.libraryItemId || null
+    },
+    /**
+     * Speed for display only. The native layer owns the real resolution and reports the
+     * rate it applied via onPlaybackSpeedChanged - never use this to drive the player.
+     */
+    resolvePlaybackRate(speedKey, mediaType) {
+      const itemRate = speedKey ? this.itemPlaybackRates[speedKey] : null
+      if (itemRate != null) return itemRate
+
       const settings = this.$store.state.user.settings
       if (mediaType === 'podcast' && settings.podcastPlaybackRate != null) {
         return settings.podcastPlaybackRate
@@ -171,6 +187,11 @@ export default {
       }
       return settings.playbackRate
     },
+    /** Native reports the rate it actually applied - mirror it, do not fight it. */
+    onPlaybackSpeedChanged(rate) {
+      if (rate == null || isNaN(rate)) return
+      this.playbackSpeed = Number(rate)
+    },
     updatePlaybackSpeed(speed) {
       if (this.$refs.audioPlayer) {
         console.log(`[AudioPlayerContainer] Update Playback Speed: ${speed}`)
@@ -178,13 +199,20 @@ export default {
       }
     },
     changePlaybackSpeed(speed) {
-      const session = this.currentPlaybackSession
-      if (session?.libraryItemId) {
-        this.itemPlaybackRates[session.libraryItemId] = speed
-        this.$localStore.setItemPlaybackRate(session.libraryItemId, speed)
-      } else {
+      const key = this.currentSpeedKey
+      if (key) {
+        // $set so the override map stays reactive - a plain assignment adds an untracked
+        // key in Vue 2 and hasItemOverride never updates.
+        this.$set(this.itemPlaybackRates, key, speed)
+        this.$localStore.setItemPlaybackRate(key, speed)
+      } else if (!this.currentPlaybackSession) {
+        // Only with no session at all does changing the speed mean "change my default".
+        // Falling through to this while a session was playing is what let a per-item
+        // speed quietly overwrite the global default.
         this.$store.dispatch('user/updateUserSettings', { playbackRate: speed })
       }
+      this.playbackSpeed = speed
+      this.updatePlaybackSpeed(speed)
     },
     setDefaultPlaybackSpeed(speed) {
       const mediaType = this.currentMediaType
@@ -195,27 +223,38 @@ export default {
       this.$toast.success(`Default speed for ${label} set to ${speed}x`)
     },
     clearItemOverride() {
-      const session = this.currentPlaybackSession
-      if (!session?.libraryItemId) return
-      delete this.itemPlaybackRates[session.libraryItemId]
-      this.$localStore.removeItemPlaybackRate(session.libraryItemId)
-      const resolvedRate = this.resolvePlaybackRate(session.libraryItemId, session.mediaType)
+      const key = this.currentSpeedKey
+      if (!key) return
+      // $delete so the computed re-evaluates - plain delete is not reactive in Vue 2
+      this.$delete(this.itemPlaybackRates, key)
+      this.$localStore.removeItemPlaybackRate(key)
+      const resolvedRate = this.resolvePlaybackRate(key, this.currentMediaType)
       this.playbackSpeed = resolvedRate
       this.updatePlaybackSpeed(resolvedRate)
       this.$toast.success(`Cleared speed override, using ${resolvedRate}x`)
     },
     settingsUpdated(settings) {
       const session = this.currentPlaybackSession
-      const resolvedRate = session
-        ? this.resolvePlaybackRate(session.libraryItemId, session.mediaType)
-        : settings.playbackRate
-      console.log(`[AudioPlayerContainer] Settings Update | Resolved PlaybackRate: ${resolvedRate}`)
 
-      if (this.playbackSpeed !== resolvedRate) {
-        this.playbackSpeed = resolvedRate
-        if (this.$refs.audioPlayer) {
-          console.log(`[AudioPlayerContainer] PlaybackRate Updated: ${this.playbackSpeed}`)
-          this.$refs.audioPlayer.setPlaybackSpeed(this.playbackSpeed)
+      // No session yet: track the default for display only. This fires on app start while
+      // the native player may already be restoring a session at its own per-item speed -
+      // pushing the global rate into the player here is what reset playback to 1x.
+      if (!session) {
+        this.playbackSpeed = settings.playbackRate
+        console.log(`[AudioPlayerContainer] Settings Update | No session, display rate: ${this.playbackSpeed}`)
+      } else if (!this.itemRatesLoaded) {
+        // Overrides not read from storage yet - resolving now could wrongly conclude this
+        // item has no override and reset a correctly restored session to the global rate
+        console.log('[AudioPlayerContainer] Settings Update | Overrides not loaded yet, leaving player speed alone')
+      } else if (this.hasItemOverride) {
+        // An explicit per-item speed outranks any default the user just changed
+        console.log(`[AudioPlayerContainer] Settings Update | Item override active, keeping ${this.playbackSpeed}x`)
+      } else {
+        const resolvedRate = this.resolvePlaybackRate(this.currentSpeedKey, this.currentMediaType)
+        if (this.playbackSpeed !== resolvedRate) {
+          this.playbackSpeed = resolvedRate
+          console.log(`[AudioPlayerContainer] Settings Update | PlaybackRate Updated: ${resolvedRate}`)
+          this.updatePlaybackSpeed(resolvedRate)
         }
       }
 
@@ -306,14 +345,17 @@ export default {
       this.serverLibraryItemId = null
       this.serverEpisodeId = null
 
-      let playbackRate = this.resolvePlaybackRate(libraryItemId, payload.mediaType || null)
-      this.playbackSpeed = playbackRate
+      // Optimistic display value only, so the UI does not flash 1x while the session
+      // loads. The rate the player actually uses is resolved natively and arrives back
+      // via onPlaybackSpeedChanged - deliberately no playbackRate in the prepare payload.
+      const displayRate = this.resolvePlaybackRate(this.speedKeyForPayload(payload), payload.mediaType || null)
+      this.playbackSpeed = displayRate
       if (this.$refs.audioPlayer) {
-        this.$refs.audioPlayer.currentPlaybackRate = playbackRate
+        this.$refs.audioPlayer.currentPlaybackRate = displayRate
       }
 
-      console.log('Called playLibraryItem', libraryItemId, 'playbackRate', playbackRate)
-      const preparePayload = { libraryItemId, episodeId, playWhenReady: startWhenReady, playbackRate }
+      console.log('Called playLibraryItem', libraryItemId, 'display rate', displayRate)
+      const preparePayload = { libraryItemId, episodeId, playWhenReady: startWhenReady }
       if (startTime !== undefined && startTime !== null) preparePayload.startTime = startTime
       AbsAudioPlayer.prepareLibraryItem(preparePayload)
         .then((data) => {
@@ -331,15 +373,6 @@ export default {
               this.serverEpisodeId = episodeId
             } else {
               this.serverEpisodeId = serverEpisodeId
-            }
-
-            const session = this.$store.state.currentPlaybackSession
-            if (session) {
-              const resolvedRate = this.resolvePlaybackRate(session.libraryItemId, session.mediaType)
-              if (resolvedRate !== playbackRate) {
-                this.playbackSpeed = resolvedRate
-                this.$refs.audioPlayer?.setPlaybackSpeed(resolvedRate)
-              }
             }
           }
         })
@@ -512,15 +545,7 @@ export default {
     }
   },
   async mounted() {
-    this.onLocalMediaProgressUpdateListener = await AbsAudioPlayer.addListener('onLocalMediaProgressUpdate', this.onLocalMediaProgressUpdate)
-    this.onSleepTimerEndedListener = await AbsAudioPlayer.addListener('onSleepTimerEnded', this.onSleepTimerEnded)
-    this.onSleepTimerSetListener = await AbsAudioPlayer.addListener('onSleepTimerSet', this.onSleepTimerSet)
-    this.onMediaPlayerChangedListener = await AbsAudioPlayer.addListener('onMediaPlayerChanged', this.onMediaPlayerChanged)
-
-    this.itemPlaybackRates = await this.$localStore.getItemPlaybackRates()
-    this.playbackSpeed = this.$store.getters['user/getUserSetting']('playbackRate')
-    console.log(`[AudioPlayerContainer] Init Playback Speed: ${this.playbackSpeed} | Item overrides: ${Object.keys(this.itemPlaybackRates).length}`)
-
+    // Register bus listeners before any await so an early user-settings event is not missed
     this.$eventBus.$on('abs-ui-ready', this.onReady)
     this.$eventBus.$on('play-item', this.playLibraryItem)
     this.$eventBus.$on('pause-item', this.pauseItem)
@@ -530,6 +555,19 @@ export default {
     this.$eventBus.$on('playback-time-update', this.playbackTimeUpdate)
     this.$eventBus.$on('device-focus-update', this.deviceFocused)
     this.$eventBus.$on('socket-reconnected', this.socketReconnected)
+
+    // Load the override map before anything can consult it. settingsUpdated checks
+    // itemRatesLoaded so a settings event arriving first cannot resolve against an
+    // empty map and push the global rate into a player already at its per-item speed.
+    this.itemPlaybackRates = (await this.$localStore.getItemPlaybackRates()) || {}
+    this.itemRatesLoaded = true
+    this.playbackSpeed = this.$store.getters['user/getUserSetting']('playbackRate') || 1
+    console.log(`[AudioPlayerContainer] Init Playback Speed: ${this.playbackSpeed} | Item overrides: ${Object.keys(this.itemPlaybackRates).length}`)
+
+    this.onLocalMediaProgressUpdateListener = await AbsAudioPlayer.addListener('onLocalMediaProgressUpdate', this.onLocalMediaProgressUpdate)
+    this.onSleepTimerEndedListener = await AbsAudioPlayer.addListener('onSleepTimerEnded', this.onSleepTimerEnded)
+    this.onSleepTimerSetListener = await AbsAudioPlayer.addListener('onSleepTimerSet', this.onSleepTimerSet)
+    this.onMediaPlayerChangedListener = await AbsAudioPlayer.addListener('onMediaPlayerChanged', this.onMediaPlayerChanged)
   },
   beforeDestroy() {
     this.onLocalMediaProgressUpdateListener?.remove()

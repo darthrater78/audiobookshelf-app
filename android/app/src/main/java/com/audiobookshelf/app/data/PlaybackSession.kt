@@ -65,6 +65,22 @@ class PlaybackSession(
   @get:JsonIgnore
   val isPodcastEpisode
     get() = mediaType == "podcast"
+
+  /**
+   * Canonical key used to store and look up a per-item playback speed override.
+   *
+   * A downloaded item carries the server id in [libraryItemId] and the "local_" id on
+   * [localLibraryItem], so keying off either one alone splits the same book across two
+   * entries depending on whether it was streamed or played from storage. Preferring the
+   * server id keeps streamed and downloaded playback of the same book on one key, and
+   * falls back to the local id for downloads that were never linked to a server.
+   *
+   * The web layer derives this key identically - keep the two in sync.
+   */
+  @get:JsonIgnore
+  val playbackRateKey: String?
+    get() = libraryItemId ?: localLibraryItem?.id
+
   @get:JsonIgnore
   val currentTimeMs
     get() = (currentTime * 1000L).toLong()

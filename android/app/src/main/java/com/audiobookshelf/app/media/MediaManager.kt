@@ -23,6 +23,13 @@ import java.util.concurrent.atomic.AtomicInteger
 class MediaManager(private var apiHandler: ApiHandler, var ctx: Context) {
   val tag = "MediaManager"
 
+  companion object {
+    // Matches the range the speed modal offers. ExoPlayer rejects anything <= 0.
+    const val MIN_PLAYBACK_RATE = 0.5f
+    const val MAX_PLAYBACK_RATE = 10f
+    const val DEFAULT_PLAYBACK_RATE = 1f
+  }
+
   private var serverLibraryItems = mutableListOf<LibraryItem>() // Store all items here
 
   private var cachedLibraryAuthors : MutableMap<String, MutableMap<String, LibraryAuthorItem>> = hashMapOf()
@@ -46,8 +53,6 @@ class MediaManager(private var apiHandler: ApiHandler, var ctx: Context) {
   var serverUserMediaProgress:MutableList<MediaProgress> = mutableListOf()
   var serverItemsInProgress = listOf<ItemInProgress>()
   var serverLibraries = listOf<Library>()
-
-  var userSettingsPlaybackRate:Float? = null
 
   // Android Auto browses on the media browser service main thread, so the server pings
   // and authorize call must not run there or they block it and trigger an ANR
@@ -102,35 +107,62 @@ class MediaManager(private var apiHandler: ApiHandler, var ctx: Context) {
     }
   }
 
+  /**
+   * Reads the global default speed straight from storage on every call.
+   *
+   * This used to be memoized in a field, but the same field was also written with
+   * per-item speeds, so a single item override would leak into the global default and
+   * survive until the process died. SharedPreferences is already memory-backed after
+   * the first read, so there is nothing to gain from caching it here.
+   */
   private fun getGlobalPlaybackRate(): Float {
-    if (userSettingsPlaybackRate != null) {
-      return userSettingsPlaybackRate ?: 1f
-    }
-
     val sharedPrefs = ctx.getSharedPreferences("CapacitorStorage", Activity.MODE_PRIVATE)
     if (sharedPrefs != null) {
       val userSettingsPref = sharedPrefs.getString("userSettings", null)
       if (userSettingsPref != null) {
         try {
           val userSettings = JSObject(userSettingsPref)
-          if (userSettings.has("playbackRate")) {
-            userSettingsPlaybackRate = userSettings.getDouble("playbackRate").toFloat()
-            return userSettingsPlaybackRate ?: 1f
+          if (userSettings.has("playbackRate") && !userSettings.isNull("playbackRate")) {
+            sanitizePlaybackRate(userSettings.getDouble("playbackRate").toFloat())?.let { return it }
           }
         } catch(je:JSONException) {
           Log.e(tag, "Failed to parse userSettings JSON ${je.localizedMessage}")
         }
       }
     }
-    return 1f
+    return DEFAULT_PLAYBACK_RATE
   }
 
+  /**
+   * Resolves the speed for a session using the canonical key, so streamed and downloaded
+   * playback of the same book agree. This is the single resolver - the web layer asks for
+   * this value rather than computing its own.
+   */
+  fun getSavedPlaybackRate(playbackSession: PlaybackSession?): Float {
+    return getSavedPlaybackRate(playbackSession?.playbackRateKey, playbackSession?.mediaType)
+  }
+
+  /**
+   * A speed only counts if the player can actually accept it. ExoPlayer throws on a
+   * non-positive speed, and this value now reaches it from stored JSON on every play
+   * path, so a corrupt or zero entry would crash playback rather than degrade it.
+   * An unusable stored value is ignored so resolution falls through to the next tier.
+   */
+  private fun sanitizePlaybackRate(rate: Float): Float? {
+    if (!rate.isFinite() || rate < MIN_PLAYBACK_RATE || rate > MAX_PLAYBACK_RATE) {
+      Log.w(tag, "Ignoring out-of-range playback rate: $rate")
+      return null
+    }
+    return rate
+  }
+
+  /** Three-tier fallback: per-item override, then per-media-type default, then global. */
   fun getSavedPlaybackRate(libraryItemId: String? = null, mediaType: String? = null): Float {
     if (libraryItemId != null) {
       try {
         val rates = getItemPlaybackRates()
         if (rates.has(libraryItemId)) {
-          return rates.getDouble(libraryItemId).toFloat()
+          sanitizePlaybackRate(rates.getDouble(libraryItemId).toFloat())?.let { return it }
         }
       } catch (e: JSONException) {
         Log.e(tag, "Failed to read item playback rate for $libraryItemId: ${e.localizedMessage}")
@@ -145,7 +177,7 @@ class MediaManager(private var apiHandler: ApiHandler, var ctx: Context) {
           val userSettings = JSObject(userSettingsPref)
           val key = if (mediaType == "podcast") "podcastPlaybackRate" else "bookPlaybackRate"
           if (userSettings.has(key) && !userSettings.isNull(key)) {
-            return userSettings.getDouble(key).toFloat()
+            sanitizePlaybackRate(userSettings.getDouble(key).toFloat())?.let { return it }
           }
         } catch (e: JSONException) {
           Log.e(tag, "Failed to read media-type playback rate: ${e.localizedMessage}")
@@ -180,7 +212,6 @@ class MediaManager(private var apiHandler: ApiHandler, var ctx: Context) {
           userSettings.put("playbackRate", newRate.toString().toDouble())
           sharedPrefEditor.putString("userSettings", userSettings.toString())
           sharedPrefEditor.apply()
-          userSettingsPlaybackRate = newRate
           Log.d(tag, "Saved userSettings JSON from Android Auto with playbackRate=$newRate")
         } catch(je:JSONException) {
           Log.e(tag, "Failed to save userSettings JSON ${je.localizedMessage}")
@@ -189,7 +220,7 @@ class MediaManager(private var apiHandler: ApiHandler, var ctx: Context) {
         val userSettings = JSONObject()
         userSettings.put("playbackRate", newRate.toString().toDouble())
         sharedPrefEditor.putString("userSettings", userSettings.toString())
-        userSettingsPlaybackRate = newRate
+        sharedPrefEditor.apply()
         Log.d(tag, "Created and saved userSettings JSON from Android Auto with playbackRate=$newRate")
       }
     }

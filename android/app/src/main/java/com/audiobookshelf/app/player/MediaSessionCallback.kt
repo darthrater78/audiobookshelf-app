@@ -24,9 +24,9 @@ class MediaSessionCallback(var playerNotificationService:PlayerNotificationServi
         if (it == null) {
           Log.e(tag, "Failed to play library item")
         } else {
-          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
+          // Null rate - preparePlayer resolves the saved speed for this item
           Handler(Looper.getMainLooper()).post {
-            playerNotificationService.preparePlayer(it,true, playbackRate)
+            playerNotificationService.preparePlayer(it, true, null)
           }
         }
       }
@@ -50,9 +50,9 @@ class MediaSessionCallback(var playerNotificationService:PlayerNotificationServi
         if (it == null) {
            Log.e(tag, "Failed to play library item")
         } else {
-          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
+          // Null rate - preparePlayer resolves the saved speed for this item
           Handler(Looper.getMainLooper()).post {
-            playerNotificationService.preparePlayer(it, true, playbackRate)
+            playerNotificationService.preparePlayer(it, true, null)
           }
         }
       }
@@ -94,7 +94,7 @@ class MediaSessionCallback(var playerNotificationService:PlayerNotificationServi
     // Rounding values in the event a non preset value (.5, 1, 1.2, 1.5, 2, 3) is selected in the phone app
     val mediaManager = playerNotificationService.mediaManager
     val session = playerNotificationService.currentPlaybackSession
-    val currentRate = mediaManager.getSavedPlaybackRate(session?.libraryItemId, session?.mediaType)
+    val currentRate = mediaManager.getSavedPlaybackRate(session)
     val newSpeed = when (currentRate) {
       in 0.5f..0.7f -> 1.0f
       in 0.8f..1.0f -> 1.2f
@@ -105,7 +105,8 @@ class MediaSessionCallback(var playerNotificationService:PlayerNotificationServi
       else -> 1.0f
     }
     playerNotificationService.setPlaybackSpeed(newSpeed)
-    playerNotificationService.mediaManager.setSavedPlaybackRate(newSpeed, playerNotificationService.currentPlaybackSession?.libraryItemId)
+    // Persist against the canonical key so the override is found again from the phone UI
+    mediaManager.setSavedPlaybackRate(newSpeed, session?.playbackRateKey)
     playerNotificationService.clientEventEmitter?.onPlaybackSpeedChanged(newSpeed)
   }
 
@@ -134,9 +135,9 @@ class MediaSessionCallback(var playerNotificationService:PlayerNotificationServi
         if (it == null) {
          Log.e(tag, "Failed to play library item")
         } else {
-          val playbackRate = playerNotificationService.mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
+          // Null rate - preparePlayer resolves the saved speed for this item
           Handler(Looper.getMainLooper()).post {
-            playerNotificationService.preparePlayer(it, true, playbackRate)
+            playerNotificationService.preparePlayer(it, true, null)
           }
         }
       }

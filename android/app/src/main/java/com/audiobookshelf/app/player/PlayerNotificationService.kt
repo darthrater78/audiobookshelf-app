@@ -446,8 +446,13 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
     isClosed = false
 
     val mediaItems = playbackSession.getMediaItems(ctx)
-    val playbackRateToUse = playbackRate ?: initialPlaybackRate ?: 1f
-    initialPlaybackRate = playbackRate
+    // A null rate means "you decide" - resolve it here rather than defaulting to 1x, so
+    // every entry point (web, Android Auto, transcode fallback, podcast auto-advance)
+    // lands on the same per-item -> per-media-type -> global fallback.
+    val playbackRateToUse = playbackRate ?: mediaManager.getSavedPlaybackRate(playbackSession)
+    // Only remember a real rate. Assigning the incoming null here used to wipe the
+    // remembered rate, so the next null-rate prepare silently fell back to 1x.
+    initialPlaybackRate = playbackRateToUse
 
     // Set actions on Android Auto like jump forward/backward
     setMediaSessionConnectorCustomActions(playbackSession)
@@ -578,6 +583,10 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
               mediaType
       )
     }
+
+    // Tell the UI what rate actually took effect. Without this the web layer never learns
+    // the resolved rate on a restored or auto-advanced session and keeps showing 1x.
+    clientEventEmitter?.onPlaybackSpeedChanged(playbackRateToUse)
   }
 
   private fun setMediaSessionConnectorCustomActions(playbackSession: PlaybackSession) {
@@ -658,8 +667,8 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
               if (it == null) {
                 Log.e(tag, "Failed to play library item")
               } else {
-                val playbackRate = mediaManager.getSavedPlaybackRate(it.libraryItemId, it.mediaType)
-                Handler(Looper.getMainLooper()).post { preparePlayer(it, true, playbackRate) }
+                // Null rate - preparePlayer resolves it for the next episode
+                Handler(Looper.getMainLooper()).post { preparePlayer(it, true, null) }
               }
             }
           }
@@ -1016,8 +1025,25 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
     seekPlayer(getCurrentTime() - amount)
   }
 
+  /**
+   * The speed the player is actually running at right now, or the last rate we prepared
+   * with if the player is not up yet (currentPlayer is lateinit).
+   */
+  fun getPlaybackSpeed(): Float {
+    if (!::currentPlayer.isInitialized) return initialPlaybackRate ?: 1f
+    return currentPlayer.playbackParameters.speed
+  }
+
+  /**
+   * Applies a speed to the live player.
+   *
+   * This deliberately does not persist anything. It used to write the incoming speed into
+   * the global default cache, which meant setting a speed for one book quietly became the
+   * default for every book. Persistence is the caller's job: the web layer writes the
+   * per-item override, and Android Auto calls [MediaManager.setSavedPlaybackRate].
+   */
   fun setPlaybackSpeed(speed: Float) {
-    mediaManager.userSettingsPlaybackRate = speed
+    initialPlaybackRate = speed
     currentPlayer.setPlaybackSpeed(speed)
 
     // Refresh Android Auto actions
@@ -2192,7 +2218,7 @@ class PlayerNotificationService : MediaBrowserServiceCompat() {
     }
 
     override fun getCustomAction(player: Player): PlaybackStateCompat.CustomAction? {
-      val playbackRate = mediaManager.getSavedPlaybackRate(currentPlaybackSession?.libraryItemId, currentPlaybackSession?.mediaType)
+      val playbackRate = mediaManager.getSavedPlaybackRate(currentPlaybackSession)
 
       // Rounding values in the event a non preset value (.5, 1, 1.2, 1.5, 2, 3) is selected in the
       // phone app
