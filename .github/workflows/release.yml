@@ -1,0 +1,63 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: checkout sources
+        uses: actions/checkout@v4
+
+      - name: use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      - name: decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/audiobookshelf-release.keystore
+
+      - name: write keystore properties
+        run: |
+          cat > android/keystore.properties << EOF
+          storeFile=../audiobookshelf-release.keystore
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=audiobookshelf
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+      - name: install dependencies
+        run: npm ci
+
+      - name: build Nuxt project
+        run: npm run generate
+
+      - name: copy to Android project
+        run: npx cap sync
+
+      - name: build release APK
+        run: ./android/gradlew assembleRelease -p android --no-daemon
+
+      - name: extract version
+        id: version
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: rename APK
+        run: mv android/app/build/outputs/apk/release/app-release.apk audiobookshelf-${{ steps.version.outputs.tag }}.apk
+
+      - name: create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: audiobookshelf-${{ steps.version.outputs.tag }}.apk
+          generate_release_notes: false
