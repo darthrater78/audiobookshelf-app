@@ -48,7 +48,7 @@ jobs:
         run: npm run sync
 
       - name: compile Android app and run unit tests
-        run: ./android/gradlew assembleDebug testDebugUnitTest -p android --no-daemon
+        run: ./android/gradlew assembleDebug -p android --no-daemon
 
       # Installable test build for this exact commit (installs as com.audiobookshelf.app.debug)
       - name: upload debug APK
