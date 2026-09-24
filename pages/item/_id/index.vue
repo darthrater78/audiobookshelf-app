@@ -137,7 +137,7 @@
         </div>
 
         <div v-if="description" class="w-full py-2">
-          <div ref="description" class="default-style less-spacing text-sm text-justify whitespace-pre-line font-light" :class="{ 'line-clamp-4': !showFullDescription }" style="hyphens: auto" v-html="description" />
+          <div ref="description" class="default-style less-spacing text-sm text-justify whitespace-pre-line font-light" :class="{ 'line-clamp-4': !showFullDescription }" style="hyphens: auto" v-html="$sanitizeHtml(description)" />
 
           <div v-if="descriptionClamped" class="text-fg text-sm py-2" @click="showFullDescription = !showFullDescription">
             {{ showFullDescription ? $strings.ButtonReadLess : $strings.ButtonReadMore }}

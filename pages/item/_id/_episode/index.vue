@@ -119,7 +119,8 @@ export default {
   mixins: [cellularPermissionHelpers],
   computed: {
     transformedDescription() {
-      return this.parseDescription(this.description)
+      // Sanitize after adding the time markers, so their class and data-time survive
+      return this.$sanitizeHtml(this.parseDescription(this.description))
     },
     bookCoverAspectRatio() {
       return this.$store.getters['libraries/getBookCoverAspectRatio']

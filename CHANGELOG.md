@@ -17,6 +17,7 @@ Security and quality audit release: hardened release pipeline, playback-speed fi
 - Removed the unused `kotlin_version` from `android/variables.gradle`; `android/build.gradle` is the single source
 
 ### Security
+- Item and podcast episode descriptions (which can come straight from third-party RSS feeds) are sanitized with DOMPurify 3.4.16 before rendering, instead of relying only on the server to strip scripts. The WebView can reach the native bridge, so injected script there would have had app-level access. The welcome message also escapes the username
 - PDF reader loads documents with `isEvalSupported: false`, closing the malicious-PDF script execution path in pdfjs-dist 2.x (GHSA-wgrm-67xf-hhpq) that has no fixed release on that line
 - epubjs 0.3.88 → 0.3.93, replacing the unmaintained `xmldom` (critical advisories) with `@xmldom/xmldom`, which is pinned to its 0.8.15 LTS line through `overrides` because epubjs still asks for the vulnerable 0.7 range
 - Non-breaking `npm audit fix` across the lockfile (88 → 59 advisories). The remainder sit in the Nuxt 2 toolchain, `@nuxtjs/axios` and `@teckel/vue-pdf` and need the Nuxt 3/4 migration

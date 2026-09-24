@@ -8,8 +8,23 @@ import { Clipboard } from '@capacitor/clipboard'
 import { Capacitor } from '@capacitor/core'
 import { formatDistance, format, addDays, isDate, setDefaultOptions } from 'date-fns'
 import * as locale from 'date-fns/locale'
+import DOMPurify from 'dompurify'
 
 Vue.directive('click-outside', vClickOutside.directive)
+
+// Server-supplied HTML (item and podcast episode descriptions, which can come straight
+// from third-party RSS feeds) is rendered with v-html in a WebView that can reach the
+// native bridge. Never rely on the server alone to have stripped scripts.
+Vue.prototype.$sanitizeHtml = (html) => {
+  if (!html) return ''
+  return DOMPurify.sanitize(String(html))
+}
+
+// For plain text interpolated into an HTML string
+Vue.prototype.$escapeHtml = (text) => {
+  if (text == null) return ''
+  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
 
 if (Capacitor.getPlatform() != 'web') {
   const setStatusBarStyleDark = async () => {
