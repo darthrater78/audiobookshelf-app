@@ -42,8 +42,8 @@ android {
     applicationId "com.audiobookshelf.app"
     minSdkVersion rootProject.ext.minSdkVersion
     targetSdkVersion rootProject.ext.targetSdkVersion
-    versionCode 119
-    versionName "1.0.1"
+    versionCode 120
+    versionName "1.0.2"
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     manifestPlaceholders = [
       "appAuthRedirectScheme": "com.audiobookshelf.app"

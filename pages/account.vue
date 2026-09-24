@@ -12,7 +12,7 @@
 
     <div class="flex justify-center items-center my-4 left-0 right-0 bottom-0 absolute">
       <p class="text-sm text-fg">{{ $strings.MessageReportBugsAndContribute }} <a class="underline" href="https://github.com/darthrater78/audiobookshelf-app" target="_blank">GitHub</a></p>
-      <a href="https://github.com/darthrater78/audiobookshelf-app/releases/latest" target="_blank" class="text-sm text-fg underline mr-2">Release Notes</a>
+      <a href="https://github.com/darthrater78/audiobookshelf-app/releases/tag/v1.0.2" target="_blank" class="text-sm text-fg underline mr-2">Release Notes</a>
       <a href="https://github.com/darthrater78/audiobookshelf-app" target="_blank" class="text-fg hover:scale-150 hover:rotate-6 transform duration-500 ml-2">
         <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="24" height="24" viewBox="0 0 24 24">
           <path

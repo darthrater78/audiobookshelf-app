@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.2](https://github.com/darthrater78/audiobookshelf-app/releases/tag/v1.0.2) — 2026-09-24
+
+Security and quality audit release: hardened release pipeline, playback-speed fixes, and dependency advisories reduced from 88 to 59.
 
 ### Fixed
 - A speed chosen in Android Auto could be reverted on the phone by any unrelated settings change (e.g. bookshelf sort order), because the web layer never re-read overrides written natively
@@ -11,7 +13,7 @@
 - Release workflow: pinned actions to commit SHAs and dropped the third-party release action; refuses to publish unless the tag is on `master`, matches the version in `build.gradle` and `package.json`, and Build Check passed for that commit; signing secrets are passed via `env:` and the keystore is deleted after the build; the APK signature is verified and a SHA-256 checksum is attached; release notes come from this changelog. Pre-release tags (`v1.0.2-beta.1`, `-dev.N`, `-alpha.N`, `-rc.N`) can be pushed from a branch to publish a signed test build as a GitHub pre-release. The publish job runs in a `release` environment that can be given required reviewers
 - Build Check: runs on pushes to `master` as well as PRs, Node 24 LTS, least-privilege token, concurrency and timeout, pinned actions; runs the Android unit tests (JUnit restored as a test dependency) and uploads the debug APK as a downloadable test build
 - Added Dependabot version updates (npm, Gradle, GitHub Actions) and an actionlint workflow
-- Account page "Release Notes" link points at the latest release instead of a hardcoded version
+- Connect screen now links to the release notes alongside GitHub, as the account page does
 - Removed the unused `kotlin_version` from `android/variables.gradle`; `android/build.gradle` is the single source
 
 ### Security
@@ -20,6 +22,7 @@
 - Non-breaking `npm audit fix` across the lockfile (88 → 59 advisories). The remainder sit in the Nuxt 2 toolchain, `@nuxtjs/axios` and `@teckel/vue-pdf` and need the Nuxt 3/4 migration
 
 ### Docs
+- README: added a Security section (what is stored on the device and whether it is encrypted at rest), Node 24 LTS / JDK 21 setup, the CI build command and how releases and pre-releases are published
 - Corrected the v1.0.0 notes: the fork was taken from v0.14.0-beta, and ExoPlayer, AndroidX and Kotlin were not updated
 
 ## [1.0.1](https://github.com/darthrater78/audiobookshelf-app/releases/tag/v1.0.1) — 2026-09-05

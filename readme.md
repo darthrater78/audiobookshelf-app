@@ -2,7 +2,7 @@
 
 A fork of [advplyr/audiobookshelf-app](https://github.com/advplyr/audiobookshelf-app) — the Android client for [Audiobookshelf](https://audiobookshelf.org), a self-hosted audiobook and podcast server.
 
-[GitHub](https://github.com/darthrater78/audiobookshelf-app) · [Latest release notes](https://github.com/darthrater78/audiobookshelf-app/releases/latest)
+[GitHub](https://github.com/darthrater78/audiobookshelf-app) · [v1.0.2 release notes](https://github.com/darthrater78/audiobookshelf-app/releases/tag/v1.0.2)
 
 This fork is wholly authored with AI using the [dev-skills](https://github.com/darthrater78/claude-vibe-skills) methodology.
 
@@ -17,7 +17,20 @@ This fork is wholly authored with AI using the [dev-skills](https://github.com/d
 
 ### Install
 
-Get the APK from [Releases](https://github.com/darthrater78/audiobookshelf-app/releases).
+Get the APK from [Releases](https://github.com/darthrater78/audiobookshelf-app/releases). Each release also carries a `.sha256` checksum file for the APK.
+
+### Security
+
+What the app stores on the device, and whether it is encrypted at rest:
+
+| Data | Where | Encrypted at rest |
+|---|---|---|
+| Refresh tokens | App-private `SecureStorage` preferences | Yes: AES-GCM (Android Keystore default 128-bit key), key held in the Android Keystore (never leaves the device, not included in backups) |
+| Access token, server list, local library index | App-private Paper database | No, protected by Android app sandboxing only. The access token is short-lived and refreshed from the encrypted refresh token |
+| Settings, per-item playback speeds | App-private Capacitor preferences | No, not sensitive |
+| Downloaded audiobooks, podcasts and ebooks | The folders you pick when downloading | No, plain media files |
+
+Android backup is enabled (`allowBackup`), so the unencrypted app data above can be included in a device backup; the refresh tokens cannot be decrypted outside this device. Cleartext HTTP and user-installed CA certificates are allowed so the app can reach self-hosted servers on a LAN or behind a self-signed certificate. Prefer HTTPS where your server supports it.
 
 ---
 
@@ -38,7 +51,8 @@ Thank you to [Weblate](https://hosted.weblate.org/engage/audiobookshelf/) for ho
 Required Software:
 
 - [Git](https://git-scm.com/downloads)
-- [Node.js](https://nodejs.org/en/) (version 20)
+- [Node.js](https://nodejs.org/en/) (24 LTS)
+- JDK 21 (bundled with current Android Studio)
 - Code editor of choice ([VSCode](https://code.visualstudio.com/download), etc)
 - [Android Studio](https://developer.android.com/studio)
 - [Android SDK](https://developer.android.com/studio)
@@ -53,7 +67,7 @@ Note: This requires a PowerShell prompt with winget installed. You should be abl
 winget install -e --id Git.Git; `
 winget install -e --id Microsoft.VisualStudioCode; `
 winget install -e --id  Google.AndroidStudio; `
-winget install -e --id OpenJS.NodeJS --version 20.11.0;
+winget install -e --id OpenJS.NodeJS.LTS;
 ```
 
 </p>
@@ -65,7 +79,8 @@ winget install -e --id OpenJS.NodeJS --version 20.11.0;
 Required Software:
 
 - [Android Studio](https://developer.android.com/studio)
-- [Node.js](https://nodejs.org/en/) (version 20)
+- [Node.js](https://nodejs.org/en/) (24 LTS)
+- JDK 21 (bundled with current Android Studio)
 - [Android SDK](https://developer.android.com/studio)
 
 <details>
@@ -74,7 +89,7 @@ Required Software:
 <p>
 
 ```zsh
-brew install android-studio node
+brew install --cask android-studio && brew install node@24
 ```
 
 </p>
@@ -113,3 +128,13 @@ After making changes to the JS layer, rebuild and sync:
 ```shell
 npm run sync
 ```
+
+Build a debug APK and run the unit tests from the command line (what CI runs):
+
+```shell
+./android/gradlew assembleDebug testDebugUnitTest -p android
+```
+
+### Releases
+
+Releases are built and signed by `.github/workflows/release.yml` when a `v*` tag is pushed. The workflow refuses to publish unless the tag is on `master`, matches the version in `android/app/build.gradle` and `package.json`, and Build Check passed for that commit. Pre-release tags (`v1.0.2-beta.1`, `-dev.N`, `-alpha.N`, `-rc.N`) may be pushed from a branch to publish a signed test build as a GitHub pre-release.
