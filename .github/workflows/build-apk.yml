@@ -1,10 +1,11 @@
 name: Build Check
 
 on:
-  # master pushes are what release.yml's gate looks up for the tagged commit
+  # Every branch push, so each commit gets a debug and a signed test build before any PR.
+  # Dependabot branches are pushes too. master pushes are what release.yml's gate looks
+  # up for the tagged commit. Branch filter keeps tag pushes from running this twice.
   push:
-    branches: [master]
-  pull_request:
+    branches: ['**']
   # Manual run for a commit that has no CI run yet (the release gate points here)
   workflow_dispatch:
 
@@ -16,6 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # No secrets in this job
   compile:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -56,3 +58,81 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+  # Release-signed test build of this commit; installs over the published app.
+  # Mirrors release.yml's build steps. No caches here, so nothing another branch
+  # wrote can run in the job that holds the signing key.
+  signed:
+    needs: compile
+    # Only the repository owner's pushes get a release-signed build. This also skips
+    # Dependabot, whose runs do not receive repository secrets.
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: use Node.js 24.x
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      # Dependencies install and the web build run before any secret touches disk
+      - name: install dependencies
+        run: npm ci
+
+      - name: build Nuxt project and copy to Android project
+        run: npm run sync
+
+      - name: write signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > android/audiobookshelf-release.keystore
+          printf 'storeFile=../audiobookshelf-release.keystore\nstorePassword=%s\nkeyAlias=audiobookshelf\nkeyPassword=%s\n' "$STORE_PASSWORD" "$KEY_PASSWORD" > android/keystore.properties
+
+      - name: build release APK
+        run: ./android/gradlew assembleRelease -p android --no-daemon
+
+      - name: remove signing keystore
+        if: always()
+        run: rm -f android/audiobookshelf-release.keystore android/keystore.properties
+
+      - name: verify APK signature
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          apk="audiobookshelf-signed-${SHA}.apk"
+          mv android/app/build/outputs/apk/release/app-release.apk "$apk"
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          certs="$("$apksigner" verify --print-certs "$apk")"
+          printf '%s\n' "$certs" | grep 'certificate DN'
+          if printf '%s\n' "$certs" | grep -q 'CN=Android Debug'; then
+            echo "::error::APK is signed with the debug key."
+            exit 1
+          fi
+          sha256sum "$apk" > "$apk.sha256"
+
+      - name: upload signed APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: audiobookshelf-signed-${{ github.sha }}
+          path: |
+            audiobookshelf-signed-${{ github.sha }}.apk
+            audiobookshelf-signed-${{ github.sha }}.apk.sha256
+          if-no-files-found: error
+          retention-days: 7

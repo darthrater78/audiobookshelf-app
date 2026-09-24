@@ -11,7 +11,7 @@ Security and quality audit release: hardened release pipeline, playback-speed fi
 
 ### Changed
 - Release workflow: pinned actions to commit SHAs and dropped the third-party release action; refuses to publish unless the tag is on `master`, matches the version in `build.gradle` and `package.json`, and Build Check passed for that commit; signing secrets are passed via `env:` and the keystore is deleted after the build; the APK signature is verified and a SHA-256 checksum is attached; release notes come from this changelog. Pre-release tags (`v1.0.2-beta.1`, `-dev.N`, `-alpha.N`, `-rc.N`) can be pushed from a branch to publish a signed test build as a GitHub pre-release. The publish job runs in a `release` environment that can be given required reviewers
-- Build Check: runs on pushes to `master` as well as PRs, Node 24 LTS, least-privilege token, concurrency and timeout, pinned actions; runs the Android unit tests (JUnit restored as a test dependency) and uploads the debug APK as a downloadable test build
+- Build Check: runs on every branch push (and by hand), Node 24 LTS, least-privilege token, concurrency and timeout, pinned actions; runs the Android unit tests (JUnit restored as a test dependency) and uploads two test builds per commit: a debug APK, and a release-signed APK with its SHA-256 checksum (signature verified, keystore deleted after the build)
 - Added Dependabot version updates (npm, Gradle, GitHub Actions) and an actionlint workflow
 - Connect screen now links to the release notes alongside GitHub, as the account page does
 - Removed the unused `kotlin_version` from `android/variables.gradle`; `android/build.gradle` is the single source

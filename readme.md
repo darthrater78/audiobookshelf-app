@@ -135,6 +135,10 @@ Build a debug APK and run the unit tests from the command line (what CI runs):
 ./android/gradlew assembleDebug testDebugUnitTest -p android
 ```
 
+### CI builds
+
+Every branch push runs Build Check, which uploads two artifacts for that commit: a debug APK (`com.audiobookshelf.app.debug`, installs next to the release app) and a release-signed APK that installs over the published app. Download them from the run's page under **Actions → Build Check**. Signed artifacts are kept for 7 days, debug ones for 14.
+
 ### Releases
 
 Releases are built and signed by `.github/workflows/release.yml` when a `v*` tag is pushed. The workflow refuses to publish unless the tag is on `master`, matches the version in `android/app/build.gradle` and `package.json`, and Build Check passed for that commit. Pre-release tags (`v1.0.2-beta.1`, `-dev.N`, `-alpha.N`, `-rc.N`) may be pushed from a branch to publish a signed test build as a GitHub pre-release.
