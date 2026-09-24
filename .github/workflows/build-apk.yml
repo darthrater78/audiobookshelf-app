@@ -118,7 +118,11 @@ jobs:
           set -euo pipefail
           apk="audiobookshelf-signed-${SHA}.apk"
           mv android/app/build/outputs/apk/release/app-release.apk "$apk"
-          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -1)"
+          if [ -z "$apksigner" ]; then
+            echo "::error::apksigner not found under $ANDROID_HOME/build-tools."
+            exit 1
+          fi
           certs="$("$apksigner" verify --print-certs "$apk")"
           printf '%s\n' "$certs" | grep 'certificate DN'
           if printf '%s\n' "$certs" | grep -q 'CN=Android Debug'; then
