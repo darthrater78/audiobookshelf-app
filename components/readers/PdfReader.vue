@@ -209,7 +209,10 @@ export default {
         url: this.ebookUrl,
         httpHeaders: {
           Authorization: `Bearer ${newAccessToken}`
-        }
+        },
+        // pdfjs-dist 2.x compiles font glyphs with eval, which lets a crafted PDF run script
+        // in the WebView (GHSA-wgrm-67xf-hhpq). No fixed 2.x release exists.
+        isEvalSupported: false
       }
       this.isRefreshing = false
     },
@@ -230,7 +233,10 @@ export default {
         url: this.ebookUrl,
         httpHeaders: {
           Authorization: `Bearer ${this.userToken}`
-        }
+        },
+        // pdfjs-dist 2.x compiles font glyphs with eval, which lets a crafted PDF run script
+        // in the WebView (GHSA-wgrm-67xf-hhpq). No fixed 2.x release exists.
+        isEvalSupported: false
       }
     }
   },

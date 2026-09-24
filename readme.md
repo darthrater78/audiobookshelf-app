@@ -2,6 +2,8 @@
 
 A fork of [advplyr/audiobookshelf-app](https://github.com/advplyr/audiobookshelf-app) — the Android client for [Audiobookshelf](https://audiobookshelf.org), a self-hosted audiobook and podcast server.
 
+[GitHub](https://github.com/darthrater78/audiobookshelf-app) · [Latest release notes](https://github.com/darthrater78/audiobookshelf-app/releases/latest)
+
 This fork is wholly authored with AI using the [dev-skills](https://github.com/darthrater78/claude-vibe-skills) methodology.
 
 **Requires an Audiobookshelf server to connect with**
@@ -9,7 +11,7 @@ This fork is wholly authored with AI using the [dev-skills](https://github.com/d
 ### What's different in this fork
 
 - Per-item playback speed with three-tier fallback (per-item, per-media-type default, global)
-- Updated dependencies (Capacitor 7, AndroidX, ExoPlayer)
+- Updated dependencies (Capacitor CLI 7, OkHttp, Jackson) and JDK 21 build
 - Fixed launcher icons
 - Android-only (iOS removed)
 

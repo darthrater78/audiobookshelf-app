@@ -191,6 +191,30 @@ export default {
     onPlaybackSpeedChanged(rate) {
       if (rate == null || isNaN(rate)) return
       this.playbackSpeed = Number(rate)
+      // Android Auto persists its per-item override natively, so pick it up here or
+      // hasItemOverride stays stale for the rest of the session
+      this.reloadItemPlaybackRates()
+    },
+    async reloadItemPlaybackRates() {
+      this.itemPlaybackRates = (await this.$localStore.getItemPlaybackRates()) || {}
+    },
+    /**
+     * Re-reads the override map before deciding, since native may have written an override
+     * (Android Auto speed cycling) that this component never saw. Resolving against a stale
+     * map would push a default into a player that is correctly running at its override.
+     */
+    async applyDefaultSpeedIfNoOverride() {
+      await this.reloadItemPlaybackRates()
+      if (this.hasItemOverride) {
+        console.log(`[AudioPlayerContainer] Settings Update | Item override active, keeping ${this.playbackSpeed}x`)
+        return
+      }
+      const resolvedRate = this.resolvePlaybackRate(this.currentSpeedKey, this.currentMediaType)
+      if (this.playbackSpeed !== resolvedRate) {
+        this.playbackSpeed = resolvedRate
+        console.log(`[AudioPlayerContainer] Settings Update | PlaybackRate Updated: ${resolvedRate}`)
+        this.updatePlaybackSpeed(resolvedRate)
+      }
     },
     updatePlaybackSpeed(speed) {
       if (this.$refs.audioPlayer) {
@@ -218,6 +242,14 @@ export default {
       const mediaType = this.currentMediaType
       if (!mediaType) return
       const key = mediaType === 'podcast' ? 'podcastPlaybackRate' : 'bookPlaybackRate'
+      // The speed the user is saving as default is also what this item is playing at, so an
+      // older override would win on the next play and silently undo the choice. Drop it and
+      // let the item follow the new default.
+      const itemKey = this.currentSpeedKey
+      if (itemKey && this.hasItemOverride) {
+        this.$delete(this.itemPlaybackRates, itemKey)
+        this.$localStore.removeItemPlaybackRate(itemKey)
+      }
       this.$store.dispatch('user/updateUserSettings', { [key]: speed })
       const label = mediaType === 'podcast' ? 'podcasts' : 'audiobooks'
       this.$toast.success(`Default speed for ${label} set to ${speed}x`)
@@ -246,16 +278,9 @@ export default {
         // Overrides not read from storage yet - resolving now could wrongly conclude this
         // item has no override and reset a correctly restored session to the global rate
         console.log('[AudioPlayerContainer] Settings Update | Overrides not loaded yet, leaving player speed alone')
-      } else if (this.hasItemOverride) {
-        // An explicit per-item speed outranks any default the user just changed
-        console.log(`[AudioPlayerContainer] Settings Update | Item override active, keeping ${this.playbackSpeed}x`)
       } else {
-        const resolvedRate = this.resolvePlaybackRate(this.currentSpeedKey, this.currentMediaType)
-        if (this.playbackSpeed !== resolvedRate) {
-          this.playbackSpeed = resolvedRate
-          console.log(`[AudioPlayerContainer] Settings Update | PlaybackRate Updated: ${resolvedRate}`)
-          this.updatePlaybackSpeed(resolvedRate)
-        }
+        // An explicit per-item speed outranks any default the user just changed
+        this.applyDefaultSpeedIfNoOverride()
       }
 
       if (!this.settingsLoaded) {

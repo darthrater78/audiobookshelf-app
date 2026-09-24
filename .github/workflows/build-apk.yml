@@ -1,37 +1,58 @@
 name: Build Check
 
 on:
+  # master pushes are what release.yml's gate looks up for the tagged commit
+  push:
+    branches: [master]
   pull_request:
-    paths-ignore:
-      - 'ios/**'
-      - 'readme.md'
+  # Manual run for a commit that has no CI run yet (the release gate points here)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   compile:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: checkout sources
-        uses: actions/checkout@v4
-
-      - name: use Node.js 20.x
-        uses: actions/setup-node@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 20
+          persist-credentials: false
+
+      - name: use Node.js 24.x
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: 21
+          cache: gradle
 
       - name: install dependencies
         run: npm ci
 
-      - name: build Nuxt project
-        run: npm run generate
+      # `npm run sync` is the same generate + cap sync a developer runs locally
+      - name: build Nuxt project and copy to Android project
+        run: npm run sync
 
-      - name: copy to Android project
-        run: npx cap sync
+      - name: compile Android app and run unit tests
+        run: ./android/gradlew assembleDebug testDebugUnitTest -p android --no-daemon
 
-      - name: compile Android app
-        run: ./android/gradlew assembleDebug -p android --no-daemon
+      # Installable test build for this exact commit (installs as com.audiobookshelf.app.debug)
+      - name: upload debug APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: audiobookshelf-debug-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # GitHub Actions — keeps SHA pins and their version comments current
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Web app (Nuxt / Capacitor)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      # Grouped for review convenience only; a minor bump can still break the build
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Native Android app
+  - package-ecosystem: "gradle"
+    directory: "/android"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
