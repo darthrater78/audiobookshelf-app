@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # GitHub Actions: keeps the SHA pins and their version comments current
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Web app and Capacitor plugins
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      # Grouped for review convenience, not as a risk judgement: a build
+      # still has to settle each one. Majors stay ungrouped.
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Native Android dependencies
+  - package-ecosystem: "gradle"
+    directory: "/android"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

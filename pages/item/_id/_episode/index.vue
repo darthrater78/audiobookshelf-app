@@ -41,7 +41,7 @@
       </ui-btn>
     </div>
 
-    <p class="text-sm text-fg mt-1.5 mb-0.5 default-style description-container" v-html="transformedDescription"></p>
+    <p class="text-sm text-fg mt-1.5 mb-0.5 default-style description-container" v-html="$sanitizeHtml(transformedDescription)"></p>
 
     <!-- loading overlay -->
     <div v-if="processing" class="absolute top-0 left-0 w-full h-full bg-black bg-opacity-30 flex items-center justify-center">

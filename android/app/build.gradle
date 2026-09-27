@@ -56,10 +56,11 @@ android {
   }
   signingConfigs {
     release {
-      storeFile file(keystoreProperties['storeFile'] ?: '../audiobookshelf-release.keystore')
-      storePassword keystoreProperties['storePassword'] ?: ''
-      keyAlias keystoreProperties['keyAlias'] ?: 'audiobookshelf'
-      keyPassword keystoreProperties['keyPassword'] ?: ''
+      // CI passes these as environment variables; local builds use keystore.properties
+      storeFile file(System.getenv('KEYSTORE_PATH') ?: keystoreProperties['storeFile'] ?: '../audiobookshelf-release.keystore')
+      storePassword System.getenv('KEYSTORE_PASSWORD') ?: keystoreProperties['storePassword'] ?: ''
+      keyAlias System.getenv('KEY_ALIAS') ?: keystoreProperties['keyAlias'] ?: 'audiobookshelf'
+      keyPassword System.getenv('KEY_PASSWORD') ?: keystoreProperties['keyPassword'] ?: ''
     }
   }
   buildTypes {

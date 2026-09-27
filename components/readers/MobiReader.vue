@@ -1,7 +1,7 @@
 <template>
   <div class="mobi-ebook-viewer w-full relative">
     <div class="absolute overflow-hidden left-0 top-0 w-screen max-w-screen m-auto z-10 border border-black border-opacity-20 shadow-md bg-white">
-      <iframe title="html-viewer" class="w-full overflow-hidden"> Loading </iframe>
+      <iframe title="html-viewer" class="w-full overflow-hidden" sandbox="allow-same-origin"> Loading </iframe>
     </div>
   </div>
 </template>
