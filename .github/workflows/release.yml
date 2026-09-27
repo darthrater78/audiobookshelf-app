@@ -10,16 +10,20 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
+  # Never cancel a release in flight
   cancel-in-progress: false
 
 jobs:
-  # A commit reaching the default branch proves nothing on its own about
-  # whether CI passed on it -- only that it was merged. This job checks both
-  # before anything gets built, signed or published.
+  # Proves the tagged commit is the release before anything is built or signed:
+  # merged to the default branch, CI passed on it, and it declares the tag's version.
+  # Runs without the signing secrets or contents: write.
+  #
+  # Pre-release tags (v1.0.2-beta.1, -dev.N, -alpha.N, -rc.N) may come from any branch so a
+  # signed build can be tested before merging; they still need a passing Build Check and a
+  # declared version equal to the tag without its suffix, and publish as a GitHub pre-release.
   gate:
     runs-on: ubuntu-latest
-    # The CI wait loop below gives up after 30 minutes; this is the backstop.
-    timeout-minutes: 35
+    timeout-minutes: 40
     permissions:
       actions: read
       contents: read
@@ -30,45 +34,39 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify tag is on default branch
+      - name: verify tag is on default branch
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          # Pre-release tags (v1.0.0-dev.1, v1.0.0-beta.1) skip this check
-          # so dev builds can happen from feature branches.
           case "$GITHUB_REF_NAME" in
-            *-dev.*|*-alpha.*|*-beta.*|*-rc.*) echo "Pre-release tag — skipping branch check."; exit 0 ;;
+            *-dev.*|*-alpha.*|*-beta.*|*-rc.*) echo "Pre-release tag, skipping branch check."; exit 0 ;;
           esac
           if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"; then
             echo "::error::Tag $GITHUB_REF_NAME is not on $DEFAULT_BRANCH. Releases come from the default branch only."
-            echo "Use a pre-release tag (e.g., v1.0.0-dev.1) for feature branch builds." >&2
+            echo "Use a pre-release tag (e.g. v1.0.2-beta.1) for a test build from a branch."
             exit 1
           fi
 
-      - name: Verify tag matches the version in the tagged commit
-        env:
-          TAG: ${{ github.ref_name }}
+      - name: verify tag matches the version in the tagged commit
         run: |
           set -euo pipefail
-          pkg_version="$(node -p "require('./package.json').version")"
-          gradle_version="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)".*/\1/p' android/app/build.gradle | head -1)"
-          if [ -z "$pkg_version" ] || [ -z "$gradle_version" ]; then
-            echo "::error::Could not read the version from package.json or android/app/build.gradle. Refusing to publish."
+          gradle_version="$(sed -n 's/^ *versionName *"\([^"]*\)".*/\1/p' android/app/build.gradle | head -1)"
+          package_version="$(node -p "require('./package.json').version")"
+          if [ -z "$gradle_version" ]; then
+            echo "::error::No versionName found in android/app/build.gradle. Refusing to publish."
             exit 1
           fi
-          if [ "$pkg_version" != "$gradle_version" ]; then
-            echo "::error::package.json declares ${pkg_version} but build.gradle versionName is ${gradle_version}."
-            exit 1
-          fi
-          tag_version="${TAG#v}"
-          tag_version="${tag_version%%-*}"
-          if [ "$tag_version" != "$pkg_version" ]; then
-            echo "::error::Tag $TAG is on a commit that declares ${pkg_version}. Merge the release first, then tag the merged commit."
-            exit 1
-          fi
+          # v1.0.2-beta.1 must sit on a commit that declares 1.0.2
+          base_tag="${GITHUB_REF_NAME%%-*}"
+          for version in "$gradle_version" "$package_version"; do
+            if [ "v${version}" != "$base_tag" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME is on a commit that declares ${version} (build.gradle ${gradle_version}, package.json ${package_version}). Merge the release first, then tag the merged commit."
+              exit 1
+            fi
+          done
 
-      - name: Require a passing CI run for this commit
+      - name: require a passing CI run for this commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -82,27 +80,26 @@ jobs:
               --jq '.workflow_runs[] | "\(.status) \(.conclusion) \(.html_url)"')
 
             if [ -z "$runs" ]; then
-              echo "::error::CI has never run for ${SHA}, so nothing has tested this commit."
-              echo "Push the branch so CI runs on it, or dispatch it by hand" >&2
-              echo "(Actions -> Build Check -> Run workflow), then re-tag." >&2
+              echo "::error::Build Check has never run for ${SHA}, so nothing has tested this commit."
+              echo "Dispatch it by hand (Actions -> Build Check -> Run workflow on master), then re-run this workflow." >&2
               exit 1
             fi
 
             if printf '%s\n' "$runs" | awk '$2 == "success" { hit = 1 } END { exit !hit }'; then
-              echo "CI passed for ${SHA}."
+              echo "Build Check passed for ${SHA}."
               exit 0
             fi
 
             unfinished=$(printf '%s\n' "$runs" | awk '$1 != "completed"' | wc -l)
             if [ "$unfinished" -eq 0 ]; then
-              echo "::error::CI ran for ${SHA} and did not pass. Refusing to release."
+              echo "::error::Build Check ran for ${SHA} and did not pass. Refusing to release."
               printf '%s\n' "$runs" | sed 's/^/  /' >&2
               exit 1
             fi
 
-            echo "CI is still running for ${SHA} (${unfinished} unfinished) -- waiting."
+            echo "Build Check still running for ${SHA} (${unfinished} unfinished) -- waiting."
             if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::Timed out waiting for CI on ${SHA} to finish."
+              echo "::error::Timed out waiting for Build Check on ${SHA}."
               exit 1
             fi
             sleep 20
@@ -112,8 +109,8 @@ jobs:
     needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Holds the keystore secrets; its protection rules gate every signing run
-    environment: apk-signing
+    # Add required reviewers in Settings -> Environments -> release to hold every publish for approval
+    environment: release
     permissions:
       contents: write
       id-token: write
@@ -124,42 +121,33 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: use Node.js LTS
+      # Validates every Gradle wrapper jar against Gradle's published checksums, so a
+      # tampered gradle-wrapper.jar fails here instead of running with the signing key
+      - name: validate Gradle wrapper
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-disabled: true
+
+      - name: use Node.js 24.x
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 'lts/*'
-          cache: 'npm'
+          node-version: 24
 
-      - name: install dependencies
-        run: npm ci
-
-      - name: build Nuxt project
-        run: npm run generate
-
-      # Copies the built web assets into android/ and installs the native
-      # plugins. It runs before any secret touches the disk.
-      - name: copy to Android project
-        run: npx cap sync android
-
-      # Capacitor 7 needs JDK 21.
       - name: Set up Java
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: 21
 
-      # Also validates every Gradle wrapper jar in the repo against Gradle's
-      # published checksums, so a tampered gradle-wrapper.jar fails here.
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
-        with:
-          cache-provider: basic
+      # Dependencies install and the web build run before any secret touches disk
+      - name: install dependencies
+        run: npm ci
 
-      # The keystore goes to $RUNNER_TEMP, outside the checkout, and only
-      # after every install step above, so no package install script ever
-      # runs with it on disk. android/app/build.gradle reads the path and
-      # passwords from the environment in its release signingConfig.
-      - name: decode keystore
+      - name: build Nuxt project and copy to Android project
+        run: npm run sync
+
+      # Outside the checkout; build.gradle reads the path and passwords from the environment
+      - name: write signing keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
@@ -168,77 +156,89 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
 
       - name: build release APK
-        working-directory: android
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: audiobookshelf
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./android/gradlew assembleRelease -p android --no-daemon
 
-      - name: delete keystore
+      - name: remove signing keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
 
-      - name: rename APK
-        id: apk
+      - name: verify APK signature and rename
         run: |
           set -euo pipefail
-          src=android/app/build/outputs/apk/release/app-release.apk
-          if [ ! -f "$src" ]; then
-            echo "::error::No APK found at $src"
+          apk="audiobookshelf-${GITHUB_REF_NAME}.apk"
+          mv android/app/build/outputs/apk/release/app-release.apk "$apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -1)"
+          if [ -z "$apksigner" ]; then
+            echo "::error::apksigner not found under $ANDROID_HOME/build-tools."
             exit 1
           fi
-          dest="audiobookshelf-${GITHUB_REF_NAME}.apk"
-          mv "$src" "$dest"
-          echo "path=$dest" >> "$GITHUB_OUTPUT"
+          certs="$("$apksigner" verify --print-certs "$apk")"
+          printf '%s\n' "$certs" | grep 'certificate DN'
+          if printf '%s\n' "$certs" | grep -q 'CN=Android Debug'; then
+            echo "::error::APK is signed with the debug key. Refusing to publish."
+            exit 1
+          fi
+          sha256sum "$apk" > "$apk.sha256"
 
+      # Signed record that this APK was built by this workflow from this commit
       - name: attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: ${{ steps.apk.outputs.path }}
+          subject-path: audiobookshelf-${{ github.ref_name }}.apk
 
-      - name: extract release notes
+      - name: extract release notes from CHANGELOG
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          if [ -f CHANGELOG.md ]; then
-            awk -v v="$version" '
-              $0 ~ "^## \\[" v "\\]" { flag = 1; next }
+          tag="${GITHUB_REF_NAME#v}"
+          version="${tag%%-*}"
+          extract() {
+            awk -v h="$1" '
+              index($0, h) == 1 { flag = 1; next }
               flag && /^## \[/ { exit }
               flag { print }
             ' CHANGELOG.md > release-notes.md
+            grep -q '[^[:space:]]' release-notes.md
+          }
+          if extract "## [${version}]"; then
+            exit 0
           fi
-          if [ ! -s release-notes.md ]; then
-            echo "Release $version" > release-notes.md
+          # A pre-release is usually cut before the version's entry is written
+          if [ "$tag" != "$version" ] && extract "## [Unreleased]"; then
+            exit 0
           fi
+          echo "::error::No CHANGELOG.md entry for ${version}. Refusing to publish without release notes."
+          exit 1
 
-      # The path goes through env:, never ${{ }} inside run: -- an expression
-      # there is pasted into the script as code before bash ever sees it.
       - name: create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APK_PATH: ${{ steps.apk.outputs.path }}
         run: |
           set -euo pipefail
-          prerelease_flag=""
+          apk="audiobookshelf-${GITHUB_REF_NAME}.apk"
+          prerelease_flag=()
           case "$GITHUB_REF_NAME" in
-            *-dev.*|*-alpha.*|*-beta.*|*-rc.*) prerelease_flag="--prerelease" ;;
+            *-dev.*|*-alpha.*|*-beta.*|*-rc.*) prerelease_flag=(--prerelease) ;;
           esac
-          gh release create "$GITHUB_REF_NAME" \
-            "$APK_PATH" \
+          gh release create "$GITHUB_REF_NAME" "$apk" "$apk.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
             --title "$GITHUB_REF_NAME" \
             --notes-file release-notes.md \
-            $prerelease_flag
+            "${prerelease_flag[@]}"
 
       - name: verify release has APK
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          assets="$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')"
+          assets="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
           echo "Assets: $assets"
-          echo "$assets" | grep -q '\.apk$' || {
-            echo "::error::Release published without an APK attached."
+          printf '%s\n' "$assets" | grep -qx "audiobookshelf-${GITHUB_REF_NAME}.apk" || {
+            echo "::error::Release published without the APK attached."
             exit 1
           }

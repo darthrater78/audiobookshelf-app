@@ -141,6 +141,8 @@ export default {
     clickedOption(rate) {
       this.selected = Number(rate)
       this.$emit('change', Number(rate))
+      // Already saved - keep modalInput from emitting the same change again on close
+      this.currentPlaybackRate = Number(rate)
     },
     setAsDefault() {
       if (!this.mediaType) return
