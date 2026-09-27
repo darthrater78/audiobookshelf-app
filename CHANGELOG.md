@@ -5,6 +5,7 @@
 Security and quality audit release: hardened release pipeline, playback-speed fixes, and dependency advisories reduced from 88 to 59.
 
 ### Fixed
+- The seek bar's drag handle was clipped to the 6 px bar by an upstream overflow fix, so it was mostly invisible and hard to grab. Only the progress fills are clipped now, so the full handle shows and can be dragged again
 - A speed chosen in Android Auto could be reverted on the phone by any unrelated settings change (e.g. bookshelf sort order), because the web layer never re-read overrides written natively
 - Picking a speed in the speed modal saved it twice (once on tap, again on close)
 - "Set as default" left an older per-item override in place, so the next play of that item ignored the speed just saved as default
@@ -16,7 +17,7 @@ Security and quality audit release: hardened release pipeline, playback-speed fi
 - Signed test builds now run in the same `release` environment as the publish job, so required reviewers there hold every signing run for approval. Both write the keystore to the runner's temp directory, outside the checkout, and pass it to Gradle through environment variables instead of a `keystore.properties` file
 - Build Check and the publish job validate the Gradle wrapper jar against Gradle's published checksums; published APKs carry a build-provenance attestation
 - Added a Dependency Review workflow that fails a pull request adding a dependency with a High or Critical advisory, plus a weekly `npm audit` report
-- versionCode 121, so this build installs over the earlier 1.0.2 test build (versionCode 120)
+- versionCode 122, so this build installs over the earlier 1.0.2 test builds (versionCode 120 and 121)
 - Connect screen now links to the release notes alongside GitHub, as the account page does
 - Removed the unused `kotlin_version` from `android/variables.gradle`; `android/build.gradle` is the single source
 
