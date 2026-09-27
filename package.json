@@ -18,7 +18,7 @@
     "devlive": "ionic cap run -l --external --port=1337"
   },
   "dependencies": {
-    "@capacitor-community/keep-awake": "^7.0.0",
+    "@capacitor-community/keep-awake": "^8.0.1",
     "@capacitor-community/volume-buttons": "^7.0.0",
     "@capacitor/android": "^7.0.0",
     "@capacitor/app": "^7.0.0",
