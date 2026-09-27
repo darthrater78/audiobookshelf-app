@@ -15,6 +15,7 @@
 
     <div class="flex items-center justify-center pt-4 fixed bottom-4 left-0 right-0">
       <a href="https://github.com/darthrater78/audiobookshelf-app" target="_blank" class="text-sm pr-2">{{ $strings.MessageFollowTheProjectOnGithub }}</a>
+      <a href="https://github.com/darthrater78/audiobookshelf-app/releases/tag/v1.0.2" target="_blank" class="text-sm underline pr-2">Release Notes</a>
       <a href="https://github.com/darthrater78/audiobookshelf-app" target="_blank"
         ><svg class="w-8 h-8 text-fg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" width="32" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 24 24">
           <path
