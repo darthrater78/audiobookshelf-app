@@ -26,7 +26,7 @@
     "@capacitor/clipboard": "^7.0.0",
     "@capacitor/core": "^7.0.0",
     "@capacitor/dialog": "^7.0.0",
-    "@capacitor/haptics": "^7.0.0",
+    "@capacitor/haptics": "^8.0.2",
     "@capacitor/network": "^7.0.0",
     "@capacitor/preferences": "^7.0.0",
     "@capacitor/status-bar": "^7.0.0",
