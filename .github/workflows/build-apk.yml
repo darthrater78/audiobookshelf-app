@@ -1,28 +1,41 @@
 name: Build Check
 
 on:
+  push:
+    branches: ['**']
+    paths-ignore:
+      - 'ios/**'
+      - 'readme.md'
   pull_request:
     paths-ignore:
       - 'ios/**'
       - 'readme.md'
+  # A commit that only touched an ignored path has no CI run, and the release
+  # gate refuses to tag it. Dispatch this by hand for such a commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   compile:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: checkout sources
-        uses: actions/checkout@v4
-
-      - name: use Node.js 20.x
-        uses: actions/setup-node@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 20
+          persist-credentials: false
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - name: use Node.js LTS
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          distribution: 'temurin'
-          java-version: 21
+          node-version: 'lts/*'
+          cache: 'npm'
 
       - name: install dependencies
         run: npm ci
@@ -31,7 +44,23 @@ jobs:
         run: npm run generate
 
       - name: copy to Android project
-        run: npx cap sync
+        run: npx cap sync android
+
+      # Capacitor 7 needs JDK 21.
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # Also validates every Gradle wrapper jar in the repo against Gradle's
+      # published checksums, so a tampered gradle-wrapper.jar fails here.
+      # cache-provider: basic is the MIT-licensed actions/cache provider.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-provider: basic
 
       - name: compile Android app
-        run: ./android/gradlew assembleDebug -p android --no-daemon
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon

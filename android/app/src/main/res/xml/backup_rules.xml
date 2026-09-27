@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backup rules for Android 11 (API 30) and lower. Keep in sync with data_extraction_rules.xml -->
+<full-backup-content>
+  <!-- Paper DB "device" book: server connection configs, including access tokens -->
+  <exclude domain="file" path="device/" />
+  <!-- Refresh tokens, encrypted with a Keystore key that is never backed up -->
+  <exclude domain="sharedpref" path="SecureStorage.xml" />
+</full-backup-content>

@@ -1,0 +1,59 @@
+name: Dependency Review
+
+on:
+  pull_request:
+  schedule:
+    # Weekly report of advisories found after merge. It reports, never blocks.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fails a pull request that adds a dependency with a known High or
+  # Critical advisory, before it is merged.
+  review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: dependency review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  audit:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: checkout sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: use Node.js LTS
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 'lts/*'
+
+      # Reads the lockfile only; no install, so no package scripts run.
+      - name: npm audit report
+        run: |
+          set -uo pipefail
+          {
+            echo '## npm audit'
+            echo '```'
+            npm audit --package-lock-only 2>&1 | tail -n 40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
